@@ -1,0 +1,74 @@
+[
+  {
+    "thread_id": "TH001",
+    "from": "sales@lanhai-valve.example",
+    "from_name": "蓝海阀门·王经理",
+    "to": "caojie@yy-shipyard.example",
+    "date": "2026-07-20",
+    "subject": "Re: 截止阀 DN50/DN80 报价",
+    "body": "曹洁您好：\n\n关于贵司询价的截止阀 GB/T587 系列，报价如下：\n- DN50 PN16：￥1,280/只（库存现货）\n- DN80 PN16：￥1,860/只（需排产，交期约20天）\n- DN100 PN25：￥2,450/只（现货）\n\n以上含税含运（送至船厂码头）。批量≥10只可再议95折。\n\n顺祝商祺\n蓝海阀门 王建国\n电话：021-5555-0101"
+  },
+  {
+    "thread_id": "TH001",
+    "from": "caojie@yy-shipyard.example",
+    "from_name": "曹洁",
+    "to": "sales@lanhai-valve.example",
+    "date": "2026-07-21",
+    "subject": "Re: 截止阀 DN50/DN80 报价",
+    "body": "王经理好：\n\n报价收到。DN80 交期20天偏长，我方系泊试验节点8月10日，最迟7月底必须到货。能否协调加急？如可15天交付，我方立即下采购单。\n\n另DN50先订6只，请确认库存。\n\n曹洁\n远洋船厂 物资部"
+  },
+  {
+    "thread_id": "TH001",
+    "from": "sales@lanhai-valve.example",
+    "from_name": "蓝海阀门·王经理",
+    "to": "caojie@yy-shipyard.example",
+    "date": "2026-07-22",
+    "subject": "Re: 截止阀 DN50/DN80 报价",
+    "body": "曹洁您好：\n\nDN50×6只已确认有货，款到即发。\nDN80 加急事宜已报生产部，最快18天（7月22日排产→8月9日到货），加急费另加8%。请确认是否接受。\n\n王建国"
+  },
+  {
+    "thread_id": "TH002",
+    "from": "quality@haidi-seal.example",
+    "from_name": "海德密封·李工",
+    "to": "caojie@yy-shipyard.example",
+    "date": "2026-07-15",
+    "subject": "关于 O型圈 批次质量异议回复",
+    "body": "曹洁您好：\n\n关于贵司反馈的氟橡胶O型圈（批次HD-20260620）硬度偏高问题，我司已复检留样，确认该批次邵氏硬度为78A（标准70±5A），在合格范围内。\n\n如贵司仍认为影响装配，我司可安排换货（同规格70A批次），运费由我司承担。请确认是否需要换货。\n\n海德密封 技术支持 李明辉"
+  },
+  {
+    "thread_id": "TH002",
+    "from": "caojie@yy-shipyard.example",
+    "from_name": "曹洁",
+    "to": "quality@haidi-seal.example",
+    "date": "2026-07-16",
+    "subject": "Re: 关于 O型圈 批次质量异议回复",
+    "body": "李工好：\n\n收到回复。现场装配反馈78A确实偏硬，密封面贴合不良。请安排换货，数量200只（规格φ50×3.5），希望本周内发出。\n\n收货地址同前。谢谢。\n\n曹洁"
+  },
+  {
+    "thread_id": "TH003",
+    "from": "logistics@hudong-pump.example",
+    "from_name": "沪东泵业·发货组",
+    "to": "caojie@yy-shipyard.example",
+    "date": "2026-07-24",
+    "subject": "发货通知：离心泵叶轮×4 + 机封×6",
+    "body": "曹洁您好：\n\n贵司采购订单 PO-20260718 已于今日发货：\n- 离心泵叶轮 CuAl10Fe5（HD-IMP-250）×4只\n- 机械密封 109系列 φ45（HD-MS-109）×6套\n\n物流：德邦快递 单号 DB2026072400123\n预计到达：7月26日\n\n请安排验收。如有问题请联系我司售后。\n\n沪东泵业 发货组"
+  },
+  {
+    "thread_id": "TH004",
+    "from": "sales@yuanhang-mech.example",
+    "from_name": "远航机械·赵经理",
+    "to": "caojie@yy-shipyard.example",
+    "date": "2026-07-18",
+    "subject": "泵轴报价及库存确认",
+    "body": "曹洁您好：\n\n关于贵司询价的泵轴 2Cr13 φ55×680，报价￥2,100/根，现货3根。\n如需订购请回复数量，款到3日内发货。\n\n远航机械 赵刚\n电话：021-5555-0202"
+  },
+  {
+    "thread_id": "TH005",
+    "from": "sales@mingzhu-elec.example",
+    "from_name": "明珠电气·孙经理",
+    "to": "caojie@yy-shipyard.example",
+    "date": "2026-07-19",
+    "subject": "Re: 船用断路器 对账确认",
+    "body": "曹洁您好：\n\n附件为6月对账单（MZ-202606），合计￥18,640.00。请核对后回传确认函。\n\n明细：\n- 船用塑壳断路器 100A×6 = ￥7,200\n- 船用接触器 LC1-D25×8 = ￥5,440\n- 船用电缆 3×2.5mm² 200m = ￥6,000\n\n明珠电气 孙丽"
+  }
+]

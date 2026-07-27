@@ -752,6 +752,34 @@ app.get('/api/analysis', auth, async (req, res) => {
   } catch (e) { res.json({ success: false, error: e.message }); }
 });
 
+// ====== AI 邮件助手 ======
+const { getThreads, draftMail, sendMail } = require('./lib/mail-assistant');
+
+app.get('/api/mail/threads', auth, (req, res) => {
+  try {
+    const threads = getThreads();
+    res.json({ success: true, data: threads });
+  } catch (e) { res.json({ success: false, error: e.message }); }
+});
+
+app.post('/api/mail/draft', auth, async (req, res) => {
+  try {
+    const { session_id, message } = req.body;
+    if (!session_id || !message) return res.json({ success: false, error: '缺少 session_id 或 message' });
+    const result = await draftMail(session_id, message);
+    res.json(result);
+  } catch (e) { res.json({ success: false, error: e.message }); }
+});
+
+app.post('/api/mail/send', auth, (req, res) => {
+  try {
+    const { to, subject, body } = req.body;
+    if (!to || !subject || !body) return res.json({ success: false, error: '缺少 to/subject/body' });
+    const record = sendMail(to, subject, body);
+    res.json({ success: true, data: record, reply: '✅ 已发送至沙箱邮箱（模拟发件箱）' });
+  } catch (e) { res.json({ success: false, error: e.message }); }
+});
+
 // ====== 启动 ======
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`🚀 远洋01/远洋02 进出库管理系统运行在 http://0.0.0.0:${PORT}`);

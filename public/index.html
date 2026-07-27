@@ -43,6 +43,7 @@
       <span class="nav-tab" onclick="switchTab('outrecords')">📤 出库记录</span>
       <span class="nav-tab" onclick="switchTab('changelog')">📋 变更日志</span>
       <span class="nav-tab" onclick="switchTab('analysis')">📊 联动分析</span>
+      <span class="nav-tab" onclick="switchTab('mail')">📧 邮件助手</span>
       <span class="nav-tab" onclick="showHistoryDocs()">📁 历史单据</span>
     </div>
   </div>
@@ -170,6 +171,34 @@
   </div>
   <div id="analysisContent" style="padding:16px 20px;">
     <div class="loading">点击“联动分析”加载...</div>
+  </div>
+</div>
+
+<!-- === 邮件助手 Tab === -->
+<div id="tabMail" class="tab-content" style="display:none">
+  <div class="table-header"><h2>📧 AI 邮件助手</h2></div>
+  <div class="mail-layout">
+    <div class="mail-threads" id="mailThreads">
+      <div class="loading">加载邮件线程...</div>
+    </div>
+    <div class="mail-compose">
+      <div class="mail-chat" id="mailChat">
+        <div class="mail-chat-hint">💡 用自然语言起草邮件，例如：“帮我催一下蓝海阀门的截止阀”</div>
+      </div>
+      <div class="mail-draft-area" id="mailDraftArea" style="display:none">
+        <div class="mail-draft-card">
+          <div class="mail-draft-header">📝 草稿</div>
+          <div class="mail-draft-field"><label>收件人</label><input type="text" id="mailDraftTo" class="form-input" readonly></div>
+          <div class="mail-draft-field"><label>主题</label><input type="text" id="mailDraftSubject" class="form-input"></div>
+          <div class="mail-draft-field"><label>正文</label><textarea id="mailDraftBody" class="form-input mail-draft-body"></textarea></div>
+          <button class="btn btn-primary" onclick="sendMailDraft()">📤 发送</button>
+        </div>
+      </div>
+      <div class="mail-input-area">
+        <textarea class="chat-input" id="mailInput" placeholder="输入邮件指令... 回车发送" rows="1"></textarea>
+        <button class="send-btn" onclick="sendMailMessage()">发送</button>
+      </div>
+    </div>
   </div>
 </div>
 

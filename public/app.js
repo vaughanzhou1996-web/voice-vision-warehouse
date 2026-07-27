@@ -122,6 +122,7 @@ function switchTab(name, el){
   if(name==='changelog')loadChangelog();
   if(name==='dashboard')loadDashboard();
   if(name==='analysis')loadAnalysis();
+  if(name==='mail')loadMail();
   if(name==='inventory'){loadInventory();loadSuppliers();}
   if(name==='inrecords')loadInRecords();
   if(name==='outrecords')loadOutRecords();
@@ -1015,3 +1016,113 @@ function zoomTable(dir){
     });
   }
 })();
+
+// ====== 邮件助手 ======
+let mailSessionId = '';
+(function(){
+  let sid = localStorage.getItem('mail_session_id');
+  if(!sid){ sid='mail-'+Math.random().toString(36).slice(2,10)+Date.now().toString(36); localStorage.setItem('mail_session_id',sid); }
+  mailSessionId = sid;
+})();
+let _mailLoaded = false;
+
+async function loadMail(){
+  if(_mailLoaded) return;
+  _mailLoaded = true;
+  const container = document.getElementById('mailThreads');
+  try {
+    const j = await (await fetch('api/mail/threads', {headers:getHeaders()})).json();
+    if(!j.success){ container.innerHTML='<div class="loading">❌ '+j.error+'</div>'; return; }
+    container.innerHTML = j.data.map(t => `
+      <div class="mail-thread-item" onclick="toggleThread(this)">
+        <div class="mail-thread-from">${escHtml(t.from_name)}</div>
+        <div class="mail-thread-subject">${escHtml(t.subject)}</div>
+        <div class="mail-thread-meta">${t.date} · ${t.count}封</div>
+        <div class="mail-thread-body" style="display:none">
+          ${t.mails.map(m=>`<div class="mail-msg"><div class="mail-msg-head">${escHtml(m.from_name)} → ${m.date}</div><div class="mail-msg-body">${escHtml(m.body).replace(/\n/g,'<br>')}</div></div>`).join('')}
+        </div>
+      </div>`).join('');
+  } catch(e){ container.innerHTML='<div class="loading">❌ 加载失败</div>'; }
+  // 绑定回车
+  const inp = document.getElementById('mailInput');
+  if(inp && !inp._bound){
+    inp._bound = true;
+    inp.addEventListener('keydown', function(e){
+      if(e.key==='Enter'&&!e.shiftKey){ e.preventDefault(); sendMailMessage(); }
+    });
+    inp.addEventListener('input', function(){ this.style.height='auto'; this.style.height=Math.min(this.scrollHeight,80)+'px'; });
+  }
+}
+
+function toggleThread(el){
+  const body = el.querySelector('.mail-thread-body');
+  body.style.display = body.style.display==='none' ? 'block' : 'none';
+}
+
+function addMailMsg(text, role){
+  const chat = document.getElementById('mailChat');
+  const hint = chat.querySelector('.mail-chat-hint');
+  if(hint) hint.remove();
+  const div = document.createElement('div');
+  div.className = 'msg ' + (role==='user'?'msg-user':'msg-ai');
+  div.innerHTML = `<div class="msg-bubble">${escHtml(text).replace(/\n/g,'<br>')}</div>`;
+  chat.appendChild(div);
+  chat.scrollTop = chat.scrollHeight;
+}
+
+async function sendMailMessage(){
+  const inp = document.getElementById('mailInput');
+  const msg = inp.value.trim();
+  if(!msg) return;
+  inp.value = ''; inp.style.height = 'auto';
+  addMailMsg(msg, 'user');
+  // 显示思考中
+  const chat = document.getElementById('mailChat');
+  const thinking = document.createElement('div');
+  thinking.className = 'msg msg-ai msg-thinking';
+  thinking.id = 'mailThinking';
+  thinking.innerHTML = '<div class="msg-bubble"><span class="thinking-dots"><span></span><span></span><span></span></span> 正在起草...</div>';
+  chat.appendChild(thinking);
+  chat.scrollTop = chat.scrollHeight;
+  try {
+    const j = await (await fetch('api/mail/draft', {
+      method:'POST', headers:getHeaders(),
+      body: JSON.stringify({ session_id: mailSessionId, message: msg })
+    })).json();
+    document.getElementById('mailThinking')?.remove();
+    if(!j.success){ addMailMsg('❌ '+j.error, 'ai'); return; }
+    addMailMsg(j.reply, 'ai');
+    // 更新草稿卡片
+    if(j.draft){
+      document.getElementById('mailDraftArea').style.display = 'block';
+      document.getElementById('mailDraftTo').value = j.draft.to_name + ' <' + j.draft.to + '>';
+      document.getElementById('mailDraftSubject').value = j.draft.subject;
+      document.getElementById('mailDraftBody').value = j.draft.body;
+    }
+  } catch(e){
+    document.getElementById('mailThinking')?.remove();
+    addMailMsg('❌ 网络错误', 'ai');
+  }
+}
+
+async function sendMailDraft(){
+  const to = document.getElementById('mailDraftTo').value;
+  const subject = document.getElementById('mailDraftSubject').value;
+  const body = document.getElementById('mailDraftBody').value;
+  if(!subject || !body){ alert('请填写主题和正文'); return; }
+  if(!confirm('确认发送至沙箱邮箱？\n\n收件人：'+to+'\n主题：'+subject)){ return; }
+  // 提取纯 email
+  const emailMatch = to.match(/<(.+?)>/) || [null, to];
+  try {
+    const j = await (await fetch('api/mail/send', {
+      method:'POST', headers:getHeaders(),
+      body: JSON.stringify({ to: emailMatch[1] || to, subject, body })
+    })).json();
+    if(j.success){
+      addMailMsg(j.reply, 'ai');
+      document.getElementById('mailDraftArea').style.display = 'none';
+    } else {
+      alert('发送失败：'+j.error);
+    }
+  } catch(e){ alert('网络错误'); }
+}
