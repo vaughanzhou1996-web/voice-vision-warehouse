@@ -227,3 +227,17 @@ tbody tr:last-child td { border-bottom:none; }
 .mail-draft-field label { display:block; font-size:11px; color:#666; margin-bottom:3px; }
 .mail-draft-field .form-input { width:100%; font-size:13px; }
 .mail-draft-body { min-height:120px; resize:vertical; line-height:1.6; font-family:inherit; }
+
+/* ====== 对账页 ====== */
+.recon-container { padding:16px 20px; }
+.recon-form { display:flex; flex-wrap:wrap; gap:12px; align-items:flex-end; background:#f8fafc; padding:16px 20px; border-radius:10px; border:1px solid #e2e8f0; }
+.recon-form-row { display:flex; flex-direction:column; gap:4px; }
+.recon-form-row label { font-size:12px; color:#666; font-weight:600; }
+.recon-form-row .form-input { min-width:140px; }
+.recon-summary { background:#f0f9ff; border:1px solid #bae6fd; border-radius:10px; padding:14px 18px; margin-bottom:16px; font-size:14px; color:#333; line-height:1.6; }
+.recon-chat-area { margin-top:16px; background:#fff; border:1px solid #e2e8f0; border-radius:10px; padding:12px 16px; }
+.recon-chat { max-height:240px; overflow-y:auto; padding:8px 0; min-height:60px; }
+@media(max-width:600px){
+  .recon-form { flex-direction:column; align-items:stretch; }
+  .recon-form-row .form-input { min-width:auto; width:100%; }
+}

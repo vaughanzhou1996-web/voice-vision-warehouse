@@ -44,6 +44,7 @@
       <span class="nav-tab" onclick="switchTab('changelog')">📋 变更日志</span>
       <span class="nav-tab" onclick="switchTab('analysis')">📊 联动分析</span>
       <span class="nav-tab" onclick="switchTab('mail')">📧 邮件助手</span>
+      <span class="nav-tab" onclick="switchTab('reconcile')">🧾 对账</span>
       <span class="nav-tab" onclick="showHistoryDocs()">📁 历史单据</span>
     </div>
   </div>
@@ -197,6 +198,47 @@
       <div class="mail-input-area">
         <textarea class="chat-input" id="mailInput" placeholder="输入邮件指令... 回车发送" rows="1"></textarea>
         <button class="send-btn" onclick="sendMailMessage()">发送</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- === 对账 Tab === -->
+<div id="tabReconcile" class="tab-content" style="display:none">
+  <div class="table-header"><h2>🧾 月末对账</h2></div>
+  <div class="recon-container">
+    <div class="recon-upload-area" id="reconUploadArea">
+      <div class="recon-form">
+        <div class="recon-form-row">
+          <label>供应商</label>
+          <select id="reconSupplier" class="form-input">
+            <option value="蓝海阀门">蓝海阀门</option>
+            <option value="海德密封">海德密封</option>
+            <option value="沪东泵业">沪东泵业</option>
+            <option value="远航机械">远航机械</option>
+            <option value="明珠电气">明珠电气</option>
+          </select>
+        </div>
+        <div class="recon-form-row">
+          <label>对账月份</label>
+          <input type="month" id="reconMonth" class="form-input" value="2026-07">
+        </div>
+        <div class="recon-form-row">
+          <label>对账单图片</label>
+          <input type="file" id="reconFile" accept="image/*" class="form-input">
+        </div>
+        <button class="btn btn-primary" onclick="startReconcile()">🔍 开始对账</button>
+      </div>
+    </div>
+    <div id="reconResult" style="display:none">
+      <div class="recon-summary" id="reconSummary"></div>
+      <div class="analysis-table-wrap"><table class="analysis-table" id="reconTable"><thead><tr><th>状态</th><th>品名</th><th>规格</th><th>对账单数量</th><th>系统数量</th><th>差异</th></tr></thead><tbody></tbody></table></div>
+      <div class="recon-chat-area">
+        <div class="recon-chat" id="reconChat"></div>
+        <div class="mail-input-area">
+          <textarea class="chat-input" id="reconInput" placeholder="追问差异原因，或输入“生成对账结果邮件”..." rows="1"></textarea>
+          <button class="send-btn" onclick="sendReconMessage()">发送</button>
+        </div>
       </div>
     </div>
   </div>

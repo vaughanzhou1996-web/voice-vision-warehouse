@@ -123,6 +123,7 @@ function switchTab(name, el){
   if(name==='dashboard')loadDashboard();
   if(name==='analysis')loadAnalysis();
   if(name==='mail')loadMail();
+  if(name==='reconcile')initReconcile();
   if(name==='inventory'){loadInventory();loadSuppliers();}
   if(name==='inrecords')loadInRecords();
   if(name==='outrecords')loadOutRecords();
@@ -1124,5 +1125,138 @@ async function sendMailDraft(){
     } else {
       alert('发送失败：'+j.error);
     }
+  } catch(e){ alert('网络错误'); }
+}
+
+// ====== 月末对账 ======
+let reconSessionId = '';
+let _reconInited = false;
+
+function initReconcile(){
+  if(_reconInited) return;
+  _reconInited = true;
+  const inp = document.getElementById('reconInput');
+  if(inp && !inp._bound){
+    inp._bound = true;
+    inp.addEventListener('keydown', function(e){
+      if(e.key==='Enter'&&!e.shiftKey){ e.preventDefault(); sendReconMessage(); }
+    });
+    inp.addEventListener('input', function(){ this.style.height='auto'; this.style.height=Math.min(this.scrollHeight,80)+'px'; });
+  }
+}
+
+async function startReconcile(){
+  const file = document.getElementById('reconFile').files[0];
+  const supplier = document.getElementById('reconSupplier').value;
+  const month = document.getElementById('reconMonth').value;
+  if(!file){ alert('请选择对账单图片'); return; }
+  if(!supplier||!month){ alert('请选择供应商和月份'); return; }
+
+  const btn = event.target;
+  btn.disabled = true; btn.textContent = '⏳ 正在识别对账单...';
+
+  const fd = new FormData();
+  fd.append('image', file);
+  fd.append('supplier', supplier);
+  fd.append('month', month);
+  reconSessionId = 'recon-' + Date.now();
+  fd.append('session_id', reconSessionId);
+
+  try {
+    const headers = getHeaders();
+    delete headers['Content-Type']; // FormData 自动设置
+    const j = await (await fetch('api/reconcile/upload', { method:'POST', headers, body:fd })).json();
+    btn.disabled = false; btn.textContent = '🔍 开始对账';
+    if(!j.success){ alert('对账失败：'+j.error); return; }
+    reconSessionId = j.data.session_id;
+    renderReconResult(j.data);
+  } catch(e){
+    btn.disabled = false; btn.textContent = '🔍 开始对账';
+    alert('网络错误');
+  }
+}
+
+function renderReconResult(data){
+  document.getElementById('reconUploadArea').style.display = 'none';
+  document.getElementById('reconResult').style.display = 'block';
+  // 摘要
+  document.getElementById('reconSummary').innerHTML = `<strong>📊 ${data.supplier} · ${data.month} 对账结果</strong><br>${escHtml(data.summary)}`;
+  // 表格
+  const tbody = document.querySelector('#reconTable tbody');
+  tbody.innerHTML = data.diffs.map(d => {
+    const icon = d.color==='green'?'✅':(d.color==='red'?'❌':'⚠️');
+    const diff = d.stmt_qty - d.sys_qty;
+    const diffText = d.type==='match' ? '-' : (diff>0?'+'+diff:diff);
+    return `<tr style="background:${d.color==='red'?'#fef2f2':(d.color==='yellow'?'#fffbeb':'#f0fdf4')}">
+      <td>${icon} ${d.type_label}</td><td>${escHtml(d.name)}</td><td>${escHtml(d.spec)}</td>
+      <td>${d.stmt_qty}</td><td>${d.sys_qty}</td><td style="font-weight:600;color:${d.color==='red'?'#dc2626':(d.color==='yellow'?'#d97706':'#16a34a')}">${diffText}</td></tr>`;
+  }).join('');
+  // 对话区提示
+  document.getElementById('reconChat').innerHTML = '<div class="mail-chat-hint">💡 可追问差异原因，或输入“生成对账结果邮件”</div>';
+}
+
+function addReconMsg(text, role){
+  const chat = document.getElementById('reconChat');
+  const hint = chat.querySelector('.mail-chat-hint');
+  if(hint) hint.remove();
+  const div = document.createElement('div');
+  div.className = 'msg ' + (role==='user'?'msg-user':'msg-ai');
+  div.innerHTML = `<div class="msg-bubble">${escHtml(text).replace(/\n/g,'<br>')}</div>`;
+  chat.appendChild(div);
+  chat.scrollTop = chat.scrollHeight;
+}
+
+async function sendReconMessage(){
+  const inp = document.getElementById('reconInput');
+  const msg = inp.value.trim();
+  if(!msg) return;
+  inp.value = ''; inp.style.height = 'auto';
+  addReconMsg(msg, 'user');
+  const chat = document.getElementById('reconChat');
+  const thinking = document.createElement('div');
+  thinking.className = 'msg msg-ai msg-thinking';
+  thinking.id = 'reconThinking';
+  thinking.innerHTML = '<div class="msg-bubble"><span class="thinking-dots"><span></span><span></span><span></span></span> 正在分析...</div>';
+  chat.appendChild(thinking);
+  chat.scrollTop = chat.scrollHeight;
+  try {
+    const j = await (await fetch('api/reconcile/chat', {
+      method:'POST', headers:getHeaders(),
+      body: JSON.stringify({ session_id: reconSessionId, message: msg })
+    })).json();
+    document.getElementById('reconThinking')?.remove();
+    if(!j.success){ addReconMsg('❌ '+j.error, 'ai'); return; }
+    addReconMsg(j.reply, 'ai');
+    // 如果返回了邮件草稿，显示发送按钮
+    if(j.email_draft){
+      const div = document.createElement('div');
+      div.className = 'msg msg-ai';
+      div.innerHTML = `<div class="msg-bubble"><div class="mail-draft-card" style="margin:0">
+        <div class="mail-draft-header">📧 对账邮件草稿</div>
+        <div class="mail-draft-field"><label>收件人</label><input class="form-input" value="${escHtml(j.email_draft.to_name)} <${escHtml(j.email_draft.to)}>" readonly></div>
+        <div class="mail-draft-field"><label>主题</label><input class="form-input" id="reconMailSubject" value="${escHtml(j.email_draft.subject)}"></div>
+        <div class="mail-draft-field"><label>正文</label><textarea class="form-input mail-draft-body" id="reconMailBody">${escHtml(j.email_draft.body)}</textarea></div>
+        <button class="btn btn-primary" onclick="sendReconMail('${escHtml(j.email_draft.to)}')">📤 发送至沙箱</button>
+      </div></div>`;
+      chat.appendChild(div);
+      chat.scrollTop = chat.scrollHeight;
+    }
+  } catch(e){
+    document.getElementById('reconThinking')?.remove();
+    addReconMsg('❌ 网络错误', 'ai');
+  }
+}
+
+async function sendReconMail(to){
+  const subject = document.getElementById('reconMailSubject').value;
+  const body = document.getElementById('reconMailBody').value;
+  if(!confirm('确认发送至沙箱邮箱？\n\n收件人：'+to+'\n主题：'+subject)) return;
+  try {
+    const j = await (await fetch('api/mail/send', {
+      method:'POST', headers:getHeaders(),
+      body: JSON.stringify({ to, subject, body })
+    })).json();
+    if(j.success) addReconMsg(j.reply, 'ai');
+    else alert('发送失败：'+j.error);
   } catch(e){ alert('网络错误'); }
 }

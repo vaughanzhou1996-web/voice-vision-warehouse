@@ -752,6 +752,35 @@ app.get('/api/analysis', auth, async (req, res) => {
   } catch (e) { res.json({ success: false, error: e.message }); }
 });
 
+// ====== 月末对账 ======
+const { reconcile, reconcileChat } = require('./lib/reconcile');
+
+app.post('/api/reconcile/upload', auth, upload.single('image'), async (req, res) => {
+  try {
+    if (!req.file) return res.json({ success: false, error: '未上传文件' });
+    const { supplier, month } = req.body;
+    if (!supplier || !month) return res.json({ success: false, error: '缺少 supplier 或 month 参数' });
+    const imgPath = req.file.path;
+    const result = await reconcile(imgPath, supplier, month);
+    if (!result.success) return res.json(result);
+    // 存入 session 供后续追问
+    const sessionId = req.body.session_id || ('recon-' + Date.now());
+    result.data.session_id = sessionId;
+    // 将数据存入 reconcileChat 的会话
+    await reconcileChat(sessionId, '__init__', result.data);
+    res.json({ success: true, data: result.data });
+  } catch (e) { res.json({ success: false, error: e.message }); }
+});
+
+app.post('/api/reconcile/chat', auth, async (req, res) => {
+  try {
+    const { session_id, message } = req.body;
+    if (!session_id || !message) return res.json({ success: false, error: '缺少 session_id 或 message' });
+    const result = await reconcileChat(session_id, message, null);
+    res.json(result);
+  } catch (e) { res.json({ success: false, error: e.message }); }
+});
+
 // ====== AI 邮件助手 ======
 const { getThreads, draftMail, sendMail } = require('./lib/mail-assistant');
 
