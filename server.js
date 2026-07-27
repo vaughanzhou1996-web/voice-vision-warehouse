@@ -831,6 +831,7 @@ app.post('/api/reconcile/chat', auth, async (req, res) => {
 
 // ====== AI 邮件助手 ======
 const { getThreads, draftMail, sendMail } = require('./lib/mail-assistant');
+const { sendRealMail, fetchInbox } = require('./lib/mail-transport');
 
 app.get('/api/mail/threads', auth, (req, res) => {
   try {
@@ -848,12 +849,31 @@ app.post('/api/mail/draft', auth, async (req, res) => {
   } catch (e) { res.json({ success: false, error: e.message }); }
 });
 
-app.post('/api/mail/send', auth, (req, res) => {
+app.post('/api/mail/send', auth, async (req, res) => {
   try {
     const { to, subject, body } = req.body;
     if (!to || !subject || !body) return res.json({ success: false, error: '缺少 to/subject/body' });
-    const record = sendMail(to, subject, body);
-    res.json({ success: true, data: record, reply: '✅ 已发送至沙箱邮箱（模拟发件箱）' });
+    // 尝试真实 SMTP 发送（白名单硬校验在 sendRealMail 内部）
+    try {
+      const result = await sendRealMail({ subject, body, displayTo: to });
+      // 同时写 sent-box.json 备份
+      sendMail(to, subject, body);
+      res.json({ success: true, data: result, reply: '✅ 已真实发送至沙箱邮箱，请查收' });
+    } catch (smtpErr) {
+      // SMTP 失败降级写 sent-box.json
+      console.log('[SMTP] 发送失败，降级写 sent-box:', smtpErr.message);
+      const record = sendMail(to, subject, body);
+      res.json({ success: true, data: record, reply: '⚠️ SMTP不可用，已写入本地发件箱（' + smtpErr.message + '）' });
+    }
+  } catch (e) { res.json({ success: false, error: e.message }); }
+});
+
+// 沙箱真实收件箱
+app.get('/api/mail/inbox', auth, async (req, res) => {
+  try {
+    const limit = parseInt(req.query.limit) || 20;
+    const emails = await fetchInbox(limit);
+    res.json({ success: true, data: emails });
   } catch (e) { res.json({ success: false, error: e.message }); }
 });
 

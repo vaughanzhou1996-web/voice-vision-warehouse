@@ -1098,19 +1098,43 @@ async function loadMail(){
   if(_mailLoaded) return;
   _mailLoaded = true;
   const container = document.getElementById('mailThreads');
+  container.innerHTML = '<div class="loading">加载邮件...</div>';
+  let html = '';
+  // 沙箱真实收件箱
+  html += '<div class="mail-section-title">📮 沙箱收件箱</div>';
+  try {
+    const ij = await (await fetch('api/mail/inbox?limit=10', {headers:getHeaders()})).json();
+    if(ij.success && ij.data.length){
+      html += ij.data.map(m => `
+        <div class="mail-thread-item" onclick="toggleThread(this)">
+          <div class="mail-thread-from">${escHtml(m.from_name||m.from)}</div>
+          <div class="mail-thread-subject">${escHtml(m.subject)}</div>
+          <div class="mail-thread-meta">${m.date} · 真实邮件</div>
+          <div class="mail-thread-body" style="display:none">
+            <div class="mail-msg"><div class="mail-msg-body">${escHtml(m.body).replace(/\n/g,'<br>')}</div></div>
+          </div>
+        </div>`).join('');
+    } else {
+      html += '<div class="mail-thread-meta" style="padding:8px 12px;color:#888">收件箱为空（发送后稍等几秒刷新）</div>';
+    }
+  } catch(e){ html += '<div class="mail-thread-meta" style="padding:8px 12px;color:#888">IMAP不可用</div>'; }
+  // 演示往来（seed 数据）
+  html += '<div class="mail-section-title" style="margin-top:12px">📁 演示往来</div>';
   try {
     const j = await (await fetch('api/mail/threads', {headers:getHeaders()})).json();
-    if(!j.success){ container.innerHTML='<div class="loading">❌ '+j.error+'</div>'; return; }
-    container.innerHTML = j.data.map(t => `
-      <div class="mail-thread-item" onclick="toggleThread(this)">
-        <div class="mail-thread-from">${escHtml(t.from_name)}</div>
-        <div class="mail-thread-subject">${escHtml(t.subject)}</div>
-        <div class="mail-thread-meta">${t.date} · ${t.count}封</div>
-        <div class="mail-thread-body" style="display:none">
-          ${t.mails.map(m=>`<div class="mail-msg"><div class="mail-msg-head">${escHtml(m.from_name)} → ${m.date}</div><div class="mail-msg-body">${escHtml(m.body).replace(/\n/g,'<br>')}</div></div>`).join('')}
-        </div>
-      </div>`).join('');
-  } catch(e){ container.innerHTML='<div class="loading">❌ 加载失败</div>'; }
+    if(j.success){
+      html += j.data.map(t => `
+        <div class="mail-thread-item" onclick="toggleThread(this)">
+          <div class="mail-thread-from">${escHtml(t.from_name)}</div>
+          <div class="mail-thread-subject">${escHtml(t.subject)}</div>
+          <div class="mail-thread-meta">${t.date} · ${t.count}封</div>
+          <div class="mail-thread-body" style="display:none">
+            ${t.mails.map(m=>`<div class="mail-msg"><div class="mail-msg-head">${escHtml(m.from_name)} → ${m.date}</div><div class="mail-msg-body">${escHtml(m.body).replace(/\n/g,'<br>')}</div></div>`).join('')}
+          </div>
+        </div>`).join('');
+    }
+  } catch(e){ html += '<div class="loading">❌ 加载失败</div>'; }
+  container.innerHTML = html;
   // 绑定回车
   const inp = document.getElementById('mailInput');
   if(inp && !inp._bound){
