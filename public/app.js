@@ -121,6 +121,7 @@ function switchTab(name, el){
   if(el)el.classList.add('active');
   if(name==='changelog')loadChangelog();
   if(name==='dashboard')loadDashboard();
+  if(name==='analysis')loadAnalysis();
   if(name==='inventory'){loadInventory();loadSuppliers();}
   if(name==='inrecords')loadInRecords();
   if(name==='outrecords')loadOutRecords();
@@ -744,6 +745,62 @@ async function loadOutRecords(){
     <td>${r.name}</td><td>${r.spec||'-'}</td><td>${r.quantity}</td><td>${r.unit||'-'}</td>
     <td>${r.department||'-'}</td><td>${r.operator||'-'}</td><td style="font-size:12px;color:#666">${r.remark||'-'}</td></tr>`).join('');
 }
+
+// ====== 联动分析 ======
+let _analysisChart=null;
+async function loadAnalysis(){
+  const container=document.getElementById('analysisContent');
+  container.innerHTML='<div class="loading">正在分析项目×备件联动数据...</div>';
+  try{
+    const j=await(await fetch('api/analysis',{headers:getHeaders()})).json();
+    if(!j.success){container.innerHTML='<div class="loading">❌ '+j.error+'</div>';return;}
+    const {milestones,category_stats,risks,ai_insight}=j.data;
+    let html='';
+    // AI洞察卡片
+    html+=`<div class="analysis-insight"><div class="analysis-insight-title">🧠 AI 分析</div><div class="analysis-insight-body">${escHtml(ai_insight)}</div></div>`;
+    // 节点时间轴表
+    html+=`<div class="analysis-section"><h3>📅 项目节点时间轴（60天内）</h3><div class="analysis-table-wrap"><table class="analysis-table"><thead><tr><th>节点</th><th>船舶</th><th>计划日期</th><th>剩余天数</th><th>关联类别</th><th>风险</th></tr></thead><tbody>`;
+    milestones.forEach(m=>{
+      const lamp=m.risk_status==='green'?'🟢':(m.risk_status==='yellow'?'🟡':'🔴');
+      const lampText=m.risk_status==='green'?'无风险':(m.risk_status==='yellow'?'低库存':'缺货');
+      html+=`<tr><td><strong>${m.milestone}</strong></td><td>${m.ship}</td><td>${m.planned_date}</td><td>${m.days_left}天</td><td>${(m.related_categories||[]).join('、')||'-'}</td><td>${lamp} ${lampText}${m.risk_count?' ('+m.risk_count+'项)':''}</td></tr>`;
+    });
+    html+=`</tbody></table></div></div>`;
+    // ECharts 柱状图
+    html+=`<div class="analysis-section"><h3>📈 各类别库存 vs 告急种数</h3><div class="analysis-chart-wrap"><div id="analysisChart" style="height:320px;min-width:560px;"></div></div></div>`;
+    // 风险明细表
+    html+=`<div class="analysis-section"><h3>⚠️ 风险明细（库存<3）</h3>`;
+    if(risks.length){
+      html+=`<div class="analysis-table-wrap"><table class="analysis-table"><thead><tr><th>备件名称</th><th>规格</th><th>当前库存</th><th>关联节点</th><th>船舶</th></tr></thead><tbody>`;
+      risks.forEach(r=>{
+        const st=r.stock===0?'color:#e53935;font-weight:700':'color:#e65100';
+        html+=`<tr><td>${r.name}</td><td>${r.spec||'-'}</td><td style="${st}">${r.stock}</td><td>${r.milestone}</td><td>${r.ship}</td></tr>`;
+      });
+      html+=`</tbody></table></div>`;
+    } else {
+      html+=`<div style="padding:20px;color:#666;text-align:center">✅ 暂无风险项</div>`;
+    }
+    html+=`</div>`;
+    container.innerHTML=html;
+    // 渲染 ECharts
+    if(typeof echarts!=='undefined'){
+      if(!_analysisChart)_analysisChart=echarts.init(document.getElementById('analysisChart'));
+      const cats=category_stats.map(c=>c.category);
+      _analysisChart.setOption({
+        tooltip:{trigger:'axis'},
+        legend:{data:['当前库存','告急种数'],bottom:0,textStyle:{fontSize:11}},
+        grid:{left:60,right:30,top:30,bottom:50},
+        xAxis:{type:'category',data:cats,axisLabel:{fontSize:11,interval:0}},
+        yAxis:[{type:'value',name:'库存'},{type:'value',name:'告急种数',splitLine:{show:false}}],
+        series:[
+          {name:'当前库存',type:'bar',data:category_stats.map(c=>c.total_stock),itemStyle:{color:'#0ea5e9'}},
+          {name:'告急种数',type:'bar',yAxisIndex:1,data:category_stats.map(c=>c.low_count),itemStyle:{color:'#e53935'}}
+        ]
+      },true);
+    }
+  }catch(e){container.innerHTML='<div class="loading">❌ 加载失败: '+e.message+'</div>';}
+}
+window.addEventListener('resize',function(){if(_analysisChart)_analysisChart.resize();});
 
 // ====== 对话式聊天（多轮上下文 + 指代解析 + 真实执行）======
 let chatVisible=false;

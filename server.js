@@ -656,6 +656,102 @@ app.get('/api/briefing', auth, async (req, res) => {
   }
 });
 
+// ====== 项目×备件联动分析 ======
+const CATEGORY_SQL = `
+  CASE
+    WHEN p.name LIKE '%阀%' THEN '阀门类'
+    WHEN p.name LIKE '%阳极%' THEN '牺牲阳极'
+    WHEN p.name LIKE '%泵%' OR p.name LIKE '%叶轮%' OR p.name LIKE '%机封%' THEN '泵配件'
+    WHEN p.name LIKE '%密封%' OR p.name LIKE '%垫片%' OR p.name LIKE '%O型圈%' OR p.name LIKE '%油封%' OR p.name LIKE '%填料%' THEN '密封件'
+    ELSE '电气件'
+  END`;
+
+app.get('/api/analysis', auth, async (req, res) => {
+  try {
+    // 1. 读取项目计划，取未杧60天节点
+    const planData = JSON.parse(fs.readFileSync(path.join(__dirname, 'data', 'project-plan.json'), 'utf8'));
+    const now = new Date();
+    const milestones = planData.filter(m => {
+      const d = new Date(m.planned_date + 'T00:00:00');
+      const diff = (d - now) / 86400000;
+      return diff >= 0 && diff <= 60;
+    }).map(m => ({
+      ...m,
+      days_left: Math.ceil((new Date(m.planned_date + 'T00:00:00') - now) / 86400000)
+    }));
+
+    // 2. 按类别聚合库存
+    const catStats = await pool.query(`
+      SELECT ${CATEGORY_SQL} AS category,
+        COUNT(*) AS product_count,
+        SUM(COALESCE(inb.t,0)-COALESCE(outb.t,0)) AS total_stock,
+        SUM(CASE WHEN COALESCE(inb.t,0)-COALESCE(outb.t,0) < 3 THEN 1 ELSE 0 END) AS low_count
+      FROM products p
+      LEFT JOIN (SELECT product_id,SUM(quantity) t FROM inbound_records GROUP BY product_id) inb ON p.id=inb.product_id
+      LEFT JOIN (SELECT product_id,SUM(quantity) t FROM outbound_records GROUP BY product_id) outb ON p.id=outb.product_id
+      GROUP BY category ORDER BY category`);
+    const category_stats = catStats.rows.map(r => ({
+      category: r.category,
+      product_count: +r.product_count,
+      total_stock: +r.total_stock,
+      low_count: +r.low_count
+    }));
+
+    // 3. 风险明细：节点关联类别中库存<3的备件
+    const risks = [];
+    for (const m of milestones) {
+      const cats = m.related_categories || [];
+      if (!cats.length) continue;
+      const catConditions = cats.map((c, i) => `${CATEGORY_SQL} = $${i + 1}`).join(' OR ');
+      const items = await pool.query(`
+        SELECT p.name,p.spec,${CATEGORY_SQL} AS category,
+          COALESCE(inb.t,0)-COALESCE(outb.t,0) AS stock
+        FROM products p
+        LEFT JOIN (SELECT product_id,SUM(quantity) t FROM inbound_records GROUP BY product_id) inb ON p.id=inb.product_id
+        LEFT JOIN (SELECT product_id,SUM(quantity) t FROM outbound_records GROUP BY product_id) outb ON p.id=outb.product_id
+        WHERE (${catConditions}) AND COALESCE(inb.t,0)-COALESCE(outb.t,0) < 3
+        ORDER BY stock ASC`, cats);
+      for (const r of items.rows) {
+        risks.push({
+          milestone: m.milestone,
+          ship: m.ship,
+          planned_date: m.planned_date,
+          days_left: m.days_left,
+          name: r.name,
+          spec: r.spec || '',
+          category: r.category,
+          stock: +r.stock
+        });
+      }
+    }
+
+    // 4. 组装快照调 chatText 生成AI洞察
+    const snapshot = `【未杧60天项目节点】\n` + milestones.map(m => `${m.ship}-${m.milestone} ${m.planned_date}(剩${m.days_left}天) 关联:${(m.related_categories||[]).join('/')}`).join('\n') +
+      `\n【各类别库存】\n` + category_stats.map(c => `${c.category}: ${c.product_count}种/库存${c.total_stock}/告急${c.low_count}种`).join('\n') +
+      `\n【风险明细(库存<3)】共${risks.length}项\n` + risks.slice(0, 15).map(r => `${r.milestone}关联: ${r.name}(${r.spec})库存${r.stock}`).join('\n');
+    let ai_insight;
+    try {
+      ai_insight = await chatText([
+        { role: 'system', text: `你是船舶建造项目AI分析师。请根据以下数据生成项目×备件联动分析洞察，300字以内，给管理者看的决策语言。要具体到“哪个节点+缺什么+建议动作”。不要客套话，直接给结论。` },
+        { role: 'user', text: snapshot }
+      ], { temperature: 0.5, max_tokens: 600 });
+    } catch (e) {
+      console.log('[Analysis] LLM失败，降级:', e.message);
+      ai_insight = `当前${milestones.length}个节点临近，${risks.length}项备件库存告急。` + category_stats.filter(c => c.low_count > 0).map(c => `${c.category}告急${c.low_count}种`).join('、') + '。建议立即采购补货。';
+    }
+
+    // 为节点添加风险状态灯
+    const milestonesWithStatus = milestones.map(m => {
+      const mRisks = risks.filter(r => r.milestone === m.milestone && r.ship === m.ship);
+      const hasZero = mRisks.some(r => r.stock === 0);
+      const status = mRisks.length === 0 ? 'green' : (hasZero ? 'red' : 'yellow');
+      return { ...m, risk_status: status, risk_count: mRisks.length };
+    });
+
+    res.json({ success: true, data: { milestones: milestonesWithStatus, category_stats, risks, ai_insight } });
+  } catch (e) { res.json({ success: false, error: e.message }); }
+});
+
 // ====== 启动 ======
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`🚀 远洋01/远洋02 进出库管理系统运行在 http://0.0.0.0:${PORT}`);
