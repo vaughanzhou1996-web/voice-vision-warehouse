@@ -1,0 +1,99 @@
+# 🚢 远洋库存管家
+
+**AI 驱动的船舶备件智能库存管理系统**
+
+> 📖 体验导览：[使用手册 →](docs/USER_MANUAL.md)
+
+## 背景故事
+
+船舶备件库存管理长期依赖 Excel 和纸质单据，一线管理员（非 IT 岗）每天面对拍照录单、月末对账、催货邮件等重复劳动。本项目由文科背景员工在 Qoder IDE 中用自然语言"手搓"完成，模型层全面接入通义千问，从对话操作到视觉识别到语音交互全部 AI 原生。系统已在真实船厂环境上线验证。
+
+## 六大 AI 能力
+
+| # | 能力 | 一句话说明 | 模型 |
+|---|------|-----------|------|
+| 1 | 💬 对话式库存操作 | 自然语言查库存、出入库，多轮上下文+指代解析 | qwen3-max-preview |
+| 2 | 📷 拍照识别入库 | 拍送货单→AI 提取品名规格数量→一键批量入库 | qwen-vl-max |
+| 3 | 📊 项目×备件联动分析 | 项目节点×库存交叉推理，风险预警+AI 洞察 | qwen3-max-preview |
+| 4 | 📧 AI 邮件助手 | 对话式起草/修改供应商邮件，沙箱真实收发 | qwen3-max-preview |
+| 5 | 🧾 月末对账 | 对账单拍照→OCR→自动比对→差异报告→追问→生成邮件 | qwen-vl-max + qwen3-max-preview |
+| 6 | 🎤 全语音链路 | 按住说话→ASR→对话引擎→AI回复→TTS播报 | qwen3-asr-flash |
+
+## 技术栈
+
+- **后端**：Node.js + Express + PostgreSQL
+- **前端**：原生 JS + ECharts（本地引用，零 CDN）
+- **AI 模型**：通义千问（阿里云百炼）
+  - `qwen3-max-preview` — 文本对话 / 分析 / 邮件
+  - `qwen-vl-max` — 视觉识别（送货单 / 对账单）
+  - `qwen3-asr-flash` — 语音识别
+- **邮件**：nodemailer（SMTP）+ imapflow（IMAP），沙箱白名单硬编码
+- **部署**：PUBLIC_URL（占位符，提交前替换）
+
+## 快速开始
+
+```bash
+# 1. 克隆仓库
+git clone REPO_URL && cd inventory-hackathon
+
+# 2. 安装依赖
+npm install
+
+# 3. 创建数据库
+createdb inventory_demo
+
+# 4. 初始化演示数据（幂等，可重复执行）
+node scripts/seed-demo.js
+
+# 5. 配置环境变量
+cp .env.example .env
+# 编辑 .env，填入 DASHSCOPE_API_KEY（必需）和邮箱凭据（可选）
+
+# 6. 启动
+npm start
+# → http://localhost:8000
+```
+
+## 项目结构
+
+```
+├── lib/                  # 核心引擎
+│   ├── qwen.js           # 通义千问统一调用层
+│   ├── chat-ops.js       # 对话式库存操作引擎
+│   ├── mail-assistant.js # AI 邮件起草引擎
+│   ├── mail-transport.js # 真实 SMTP/IMAP 通道（白名单硬校验）
+│   └── reconcile.js      # 月末对账引擎
+├── public/               # 前端（原生 JS，无框架）
+│   ├── index.html        # 主页面
+│   ├── app.js            # 前端逻辑
+│   ├── style.css         # 样式
+│   └── lib/echarts.min.js
+├── scripts/              # 数据初始化 + 验收测试
+│   ├── seed-demo.js      # 幂等建库+种子数据
+│   └── test-*.js         # 各功能验收脚本
+├── data/                 # 配置文件
+│   ├── ships.json        # 船名映射
+│   ├── project-plan.json # 项目节点计划
+│   └── mailbox-seed.json # 虚构邮件线程
+├── server.js             # Express 主服务
+└── .env.example          # 环境变量模板
+```
+
+## 演示账号
+
+| 用户名 | 密码 | 角色 | 视角差异 |
+|--------|------|------|---------|
+| caojie | demo1234 | 管理员 | 简报聚焦库存告急+近3天动态 |
+| zhangwei | demo1234 | 队长 | 简报聚焦项目节点风险 |
+| chenjun | demo1234 | 分析员 | 简报聚焦呆滞物料+月度对比 |
+
+## 安全设计
+
+- **沙箱邮箱白名单硬编码**：SMTP 发送函数内 `if (recipient !== 'yuanyangdemo@163.com') throw`，代码级拒绝任何其他收件人，不可通过配置绕过
+- **全虚构脱敏数据宇宙**：船舶（远洋01/02）、供应商（蓝海阀门等）、人员均为虚构，详见 [DEMO_DATA.md](DEMO_DATA.md)
+- **无真实客户信息**：邮件线程仅读取 `data/mailbox-seed.json` 虚构数据
+- **API Key 仅从 .env 读取**：.env 已加入 .gitignore，绝不入库
+
+---
+
+📖 详细操作指南请阅读 [docs/USER_MANUAL.md](docs/USER_MANUAL.md)

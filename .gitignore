@@ -1,6 +1,5 @@
 .env
 node_modules/
 uploads/
-docs/
 test-*.png
 data/sent-box.json
