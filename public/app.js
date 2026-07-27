@@ -762,8 +762,8 @@ async function loadAnalysis(){
     html+=`<div class="analysis-section"><h3>📅 项目节点时间轴（60天内）</h3><div class="analysis-table-wrap"><table class="analysis-table"><thead><tr><th>节点</th><th>船舶</th><th>计划日期</th><th>剩余天数</th><th>关联类别</th><th>风险</th></tr></thead><tbody>`;
     milestones.forEach(m=>{
       const lamp=m.risk_status==='green'?'🟢':(m.risk_status==='yellow'?'🟡':'🔴');
-      const lampText=m.risk_status==='green'?'无风险':(m.risk_status==='yellow'?'低库存':'缺货');
-      html+=`<tr><td><strong>${m.milestone}</strong></td><td>${m.ship}</td><td>${m.planned_date}</td><td>${m.days_left}天</td><td>${(m.related_categories||[]).join('、')||'-'}</td><td>${lamp} ${lampText}${m.risk_count?' ('+m.risk_count+'项)':''}</td></tr>`;
+      const lampText=m.risk_status==='green'?'无风险':(m.risk_status==='red'?'紧急缺货':'缺货');
+      html+=`<tr><td class="td-nowrap"><strong>${m.milestone}</strong></td><td>${m.ship}</td><td class="td-nowrap">${m.planned_date}</td><td>${m.days_left}天</td><td>${(m.related_categories||[]).join('、')||'-'}</td><td>${lamp} ${lampText}${m.risk_count?' ('+m.risk_count+'项)':''}</td></tr>`;
     });
     html+=`</tbody></table></div></div>`;
     // ECharts 柱状图

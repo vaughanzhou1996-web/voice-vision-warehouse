@@ -743,8 +743,8 @@ app.get('/api/analysis', auth, async (req, res) => {
     // 为节点添加风险状态灯
     const milestonesWithStatus = milestones.map(m => {
       const mRisks = risks.filter(r => r.milestone === m.milestone && r.ship === m.ship);
-      const hasZero = mRisks.some(r => r.stock === 0);
-      const status = mRisks.length === 0 ? 'green' : (hasZero ? 'red' : 'yellow');
+      const hasRisk = mRisks.length > 0;
+      const status = !hasRisk ? 'green' : (m.days_left <= 14 ? 'red' : 'yellow');
       return { ...m, risk_status: status, risk_count: mRisks.length };
     });
 

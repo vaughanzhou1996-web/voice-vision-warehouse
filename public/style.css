@@ -190,10 +190,13 @@ tbody tr:last-child td { border-bottom:none; }
 .analysis-table { width:100%; border-collapse:collapse; min-width:560px; }
 .analysis-table th { background:#f8fafc; padding:10px 12px; text-align:left; font-size:12px; color:#666; border-bottom:2px solid #e2e8f0; white-space:nowrap; }
 .analysis-table td { padding:9px 12px; font-size:13px; border-bottom:1px solid #f1f5f9; color:#333; }
+.analysis-table td.td-nowrap { white-space:nowrap; }
 .analysis-table tr:hover td { background:#f8fafc; }
 .analysis-chart-wrap { overflow-x:auto; }
 @media(max-width:600px){
   .analysis-chart-wrap { overflow-x:auto; -webkit-overflow-scrolling:touch; }
   .analysis-chart-wrap > div { min-width:560px; }
   .analysis-table-wrap { overflow-x:auto; -webkit-overflow-scrolling:touch; }
+  .analysis-table { min-width:600px; }
+  .chat-fab { bottom:calc(24px + env(safe-area-inset-bottom, 0px) + 16px); }
 }
