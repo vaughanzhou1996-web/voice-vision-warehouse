@@ -82,8 +82,14 @@ function auth(req, res, next) {
   next();
 }
 
-// 船号白名单（YY01/YY02），默认 YY01
-function getShip(req) { return req.query.ship === 'YY02' ? 'YY02' : 'YY01'; }
+// 船舶配置（数据驱动）
+const SHIPS = JSON.parse(fs.readFileSync(path.join(__dirname, 'data', 'ships.json'), 'utf8'));
+
+// 船号白名单，默认第一条
+function getShip(req) {
+  const s = req.query.ship;
+  return SHIPS.some(sh => sh.project_no === s) ? s : SHIPS[0].project_no;
+}
 
 // ====== 记录变更日志 ======
 async function logChange(actionType, productId, productName, productSpec, quantity, qtyBefore, qtyAfter, operator, details, refTable, refId) {
@@ -449,7 +455,7 @@ app.get('/api/dashboard', auth, async (req, res) => {
   } catch (e) { res.json({ success: false, error: e.message }); }
 });
 
-// 各船统计（选船页卡片用）
+// 各船统计（选船页卡片用，数据驱动）
 app.get('/api/ships/stats', auth, async (req, res) => {
   try {
     const r = await pool.query(`
@@ -458,9 +464,16 @@ app.get('/api/ships/stats', auth, async (req, res) => {
       FROM products p
       LEFT JOIN (SELECT product_id,SUM(quantity) t FROM inbound_records GROUP BY product_id) inb ON p.id=inb.product_id
       LEFT JOIN (SELECT product_id,SUM(quantity) t FROM outbound_records GROUP BY product_id) outb ON p.id=outb.product_id
-      WHERE p.project_no IN ('YY01','YY02')
       GROUP BY p.project_no`);
-    res.json({ success: true, data: r.rows });
+    const statsMap = {};
+    r.rows.forEach(row => statsMap[row.project_no] = row);
+    const data = SHIPS.map(sh => ({
+      project_no: sh.project_no,
+      name: sh.name,
+      products: statsMap[sh.project_no] ? +statsMap[sh.project_no].products : 0,
+      stock: statsMap[sh.project_no] ? +statsMap[sh.project_no].stock : 0
+    }));
+    res.json({ success: true, data });
   } catch (e) { res.json({ success: false, error: e.message }); }
 });
 

@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>SOM07/SOM08 进出库管理系统</title>
+<title>远洋船舶进出库管理系统</title>
 <link rel="stylesheet" href="style.css?v=2">
 </head>
 <body>
@@ -12,7 +12,7 @@
   <div class="login-card">
     <div style="font-size:32px;text-align:center;margin-bottom:8px;">🔧</div>
     <h1 style="text-align:center;font-size:20px;margin-bottom:4px;">船舶进出库管理</h1>
-    <p style="text-align:center;color:#888;margin-bottom:24px;font-size:14px;">SOM07 · SOM08</p>
+    <p style="text-align:center;color:#888;margin-bottom:24px;font-size:14px;">远洋01 · 远洋02</p>
     <div class="form-row"><label>用户名</label><input type="text" id="loginUser" class="form-input" placeholder="caojie" onkeydown="if(event.key==='Enter')doLogin()"></div>
     <div class="form-row"><label>密码</label><input type="password" id="loginPass" class="form-input" placeholder="••••••" onkeydown="if(event.key==='Enter')doLogin()"></div>
     <button class="btn btn-primary" style="width:100%;padding:10px;margin-top:8px;" onclick="doLogin()">登 录</button>
@@ -25,19 +25,8 @@
   <div style="width:100%;max-width:720px;padding:20px;">
     <h1 style="text-align:center;font-size:22px;margin-bottom:6px;color:#1a3a5c;">🚢 选择库存系统</h1>
     <p style="text-align:center;color:#666;margin-bottom:28px;font-size:14px;">每艘船独立管理库存，进入后可在左上角随时切换</p>
-    <div style="display:flex;gap:20px;justify-content:center;flex-wrap:wrap;">
-      <div class="ship-card" onclick="selectShip('SOM07')">
-        <div style="font-size:44px;">🚢</div>
-        <div style="font-size:22px;font-weight:700;color:#1a3a5c;margin:10px 0 4px;">SOM07</div>
-        <div style="font-size:13px;color:#666;" id="shipStat07">加载中...</div>
-        <div style="margin-top:14px;font-size:14px;color:#2b6cb0;font-weight:600;">进入系统 →</div>
-      </div>
-      <div class="ship-card" onclick="selectShip('SOM08')">
-        <div style="font-size:44px;">🚢</div>
-        <div style="font-size:22px;font-weight:700;color:#1a3a5c;margin:10px 0 4px;">SOM08</div>
-        <div style="font-size:13px;color:#666;" id="shipStat08">加载中...</div>
-        <div style="margin-top:14px;font-size:14px;color:#2b6cb0;font-weight:600;">进入系统 →</div>
-      </div>
+    <div id="shipCards" style="display:flex;gap:20px;justify-content:center;flex-wrap:wrap;">
+      <div style="color:#666;font-size:14px;padding:40px;">加载中...</div>
     </div>
   </div>
 </div>
@@ -45,9 +34,7 @@
 <div id="mainApp" style="display:none;">
 <div class="topbar">
   <div class="topbar-left">
-    <div class="ship-switcher">
-      <span class="ship-pill" data-ship="SOM07" onclick="switchShip('SOM07')">SOM07</span>
-      <span class="ship-pill" data-ship="SOM08" onclick="switchShip('SOM08')">SOM08</span>
+    <div class="ship-switcher" id="shipSwitcher">
     </div>
     <div class="nav-tabs">
       <span class="nav-tab active" onclick="switchTab('inventory')">📊 库存总览</span>

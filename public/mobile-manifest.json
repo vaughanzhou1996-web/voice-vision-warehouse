@@ -1,7 +1,7 @@
 {
   "name": "仓库管家",
   "short_name": "仓库",
-  "description": "SOM07/SOM08 进出库管理系统",
+  "description": "远洋船舶进出库管理系统",
   "start_url": "/inventory/mobile.html",
   "display": "standalone",
   "background_color": "#3370ff",

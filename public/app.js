@@ -1,5 +1,6 @@
 let token='', username='', displayName='', role='', batchMode=false, batchSelectedItems=[];
-let currentShip = localStorage.getItem('currentShip') || 'SOM07';
+let currentShip = localStorage.getItem('currentShip') || '';
+let shipsList = []; // 数据驱动的船舶列表
 function apiUrl(url){ return url + (url.includes('?')?'&':'?') + 'ship=' + currentShip; }
 
 async function doLogin(){
@@ -14,18 +15,22 @@ async function doLogin(){
 }
 function showLoginError(m){var e=document.getElementById('loginError');e.textContent=m;e.style.display='block';}
 
-// ====== 选船页 ======
+// ====== 选船页（数据驱动）======
 async function showShipSelect(){
   document.getElementById('shipSelectPage').style.display='flex';
   document.getElementById('mainApp').style.display='none';
   try{
     const j=await(await fetch('api/ships/stats',{headers:getHeaders()})).json();
     if(j.success){
-      const map={}; j.data.forEach(r=>map[r.project_no]=r);
-      [['SOM07','shipStat07'],['SOM08','shipStat08']].forEach(([s,elId])=>{
-        const r=map[s];
-        document.getElementById(elId).textContent = r ? `${r.products} 种物品 · 库存 ${r.stock} 件` : '空库存，随时开始';
-      });
+      shipsList=j.data;
+      const container=document.getElementById('shipCards');
+      container.innerHTML=j.data.map(s=>`
+        <div class="ship-card" onclick="selectShip('${s.project_no}')">
+          <div style="font-size:44px;">🚢</div>
+          <div style="font-size:22px;font-weight:700;color:#1a3a5c;margin:10px 0 4px;">${s.name}</div>
+          <div style="font-size:13px;color:#666;">${s.products} 种物品 · 库存 ${s.stock} 件</div>
+          <div style="margin-top:14px;font-size:14px;color:#2b6cb0;font-weight:600;">进入系统 →</div>
+        </div>`).join('');
     }
   }catch(e){}
 }
@@ -44,11 +49,13 @@ function switchShip(ship){
   if(ship===currentShip)return;
   currentShip=ship; localStorage.setItem('currentShip',ship);
   updateShipPills();
-  showToast('已切换到 '+ship, 2000);
+  const name=(shipsList.find(s=>s.project_no===ship)||{}).name||ship;
+  showToast('已切换到 '+name, 2000);
   loadInventory();loadSuppliers();
 }
 function updateShipPills(){
-  document.querySelectorAll('.ship-pill').forEach(p=>p.classList.toggle('active',p.dataset.ship===currentShip));
+  const el=document.getElementById('shipSwitcher');
+  el.innerHTML=shipsList.map(s=>`<span class="ship-pill${s.project_no===currentShip?' active':''}" data-ship="${s.project_no}" onclick="switchShip('${s.project_no}')">${s.name}</span>`).join('');
 }
 function doLogout(){
   fetch('api/logout',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token})});
