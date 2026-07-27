@@ -6,7 +6,7 @@ const axios = require('axios');
 const crypto = require('crypto');
 const { Pool } = require('pg');
 
-const PORT = 8000;
+const PORT = process.env.PORT || 8000;
 const UPLOAD_DIR = path.join(__dirname, 'uploads');
 const DOCS_DIR = path.join(__dirname, 'docs');
 fs.mkdirSync(UPLOAD_DIR, { recursive: true });
