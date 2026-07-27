@@ -513,6 +513,54 @@ app.post('/api/speech/recognize', auth, async (req, res) => {
   }
 });
 
+// ====== 全语音链路 ======
+// ASR：multer 收音频文件 → qwen3-asr-flash
+app.post('/api/voice/asr', auth, upload.single('audio'), async (req, res) => {
+  try {
+    if (!req.file) return res.json({ success: false, error: '未上传音频文件' });
+    const audioBuffer = fs.readFileSync(req.file.path);
+    const base64 = audioBuffer.toString('base64');
+    // 从 mimetype 推断格式
+    const mime = req.file.mimetype || 'audio/webm';
+    const text = await speechToText(base64, mime);
+    // 清理临时文件
+    fs.unlink(req.file.path, () => {});
+    res.json({ success: true, text });
+  } catch (e) {
+    res.json({ success: false, error: e.message });
+  }
+});
+
+// TTS：尝试百炼 CosyVoice，失败则返回 fallback
+app.post('/api/voice/tts', auth, async (req, res) => {
+  try {
+    const { text } = req.body;
+    if (!text) return res.json({ success: false, error: '缺少 text' });
+    // 尝试 DashScope OpenAI兼容 TTS
+    const apiKey = process.env.DASHSCOPE_API_KEY || (() => {
+      const m = fs.readFileSync(path.join(__dirname, '.env'), 'utf8').match(/DASHSCOPE_API_KEY=(\S+)/);
+      return m ? m[1] : '';
+    })();
+    const resp = await axios.post('https://dashscope.aliyuncs.com/compatible-mode/v1/audio/speech', {
+      model: 'cosyvoice-v1',
+      input: text.substring(0, 500),
+      voice: 'longxiaochun'
+    }, {
+      headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+      timeout: 15000,
+      responseType: 'arraybuffer'
+    });
+    // 保存音频文件
+    const filename = 'tts-' + Date.now() + '.mp3';
+    const outPath = path.join(UPLOAD_DIR, filename);
+    fs.writeFileSync(outPath, Buffer.from(resp.data));
+    res.json({ success: true, audio_url: '/uploads/' + filename, fallback: false });
+  } catch (e) {
+    console.log('[TTS] 百炼 CosyVoice 不可用，降级浏览器 speechSynthesis:', e.response?.status || e.message);
+    res.json({ success: true, fallback: true });
+  }
+});
+
 // 批次撤销（AI整批入库）
 app.post('/api/rollback/batch', auth, async (req, res) => {
   try {
