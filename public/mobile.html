@@ -1,0 +1,434 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no">
+<meta name="theme-color" content="#3370ff">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<link rel="manifest" href="mobile-manifest.json">
+<title>SOM07/SOM08 仓库</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif;background:#f5f6f8;color:#1f1f1f;font-size:14px;-webkit-user-select:none;user-select:none}
+input,select,textarea{font-size:16px!important}/* 防iOS缩放 */
+
+/* ====== 登录 ====== */
+#loginPage{position:fixed;inset:0;background:linear-gradient(135deg,#3370ff 0%,#1a4bb8 100%);display:flex;justify-content:center;align-items:center;z-index:999}
+#loginPage .card{background:#fff;padding:32px 28px;border-radius:16px;width:88%;max-width:340px;box-shadow:0 8px 32px rgba(0,0,0,.16)}
+#loginPage h1{text-align:center;font-size:22px;margin-bottom:4px}
+#loginPage p{text-align:center;color:#888;font-size:13px;margin-bottom:20px}
+#loginPage input{width:100%;padding:12px 14px;border:1px solid #ddd;border-radius:10px;margin-bottom:12px;font-size:16px;outline:none;transition:border .2s}
+#loginPage input:focus{border-color:#3370ff;box-shadow:0 0 0 3px rgba(51,112,255,.12)}
+#loginPage button{width:100%;padding:12px;background:#3370ff;color:#fff;border:none;border-radius:10px;font-size:16px;font-weight:600;cursor:pointer}
+#loginPage button:active{background:#2962e8}
+#loginError{color:#e53935;font-size:13px;text-align:center;margin-top:8px;display:none}
+
+/* ====== 主体 ====== */
+#mainApp{display:none;padding-bottom:80px}
+
+/* ====== 顶栏 ====== */
+.topbar{background:#3370ff;color:#fff;padding:12px 16px;display:flex;justify-content:space-between;align-items:center;position:sticky;top:0;z-index:100}
+.topbar h1{font-size:17px;font-weight:600}
+.topbar .user{font-size:13px;opacity:.8}
+.topbar .logout{background:none;border:none;color:#fff;font-size:13px;opacity:.8;cursor:pointer;padding:4px 8px}
+
+/* ====== 搜索 ====== */
+.search-bar{display:flex;gap:8px;padding:10px 16px;background:#fff;border-bottom:1px solid #f0f0f0;position:sticky;top:48px;z-index:99}
+.search-bar input{flex:1;padding:10px 14px;border:1px solid #ddd;border-radius:24px;font-size:14px;outline:none;background:#f5f6f8}
+.search-bar input:focus{border-color:#3370ff;background:#fff}
+.search-bar .filter-btn{width:40px;height:40px;border-radius:50%;border:1px solid #ddd;background:#fff;display:flex;align-items:center;justify-content:center;font-size:18px;cursor:pointer;flex-shrink:0}
+
+/* ====== 库存卡片 ====== */
+#stockList{padding:10px 16px}
+.stock-card{background:#fff;border-radius:12px;padding:14px 16px;margin-bottom:8px;box-shadow:0 1px 4px rgba(0,0,0,.04);display:flex;justify-content:space-between;align-items:center;cursor:pointer;transition:all .15s;position:relative}
+.stock-card:active{transform:scale(.98)}
+.stock-card .info{flex:1}
+.stock-card .name{font-size:15px;font-weight:600;margin-bottom:2px}
+.stock-card .spec{font-size:12px;color:#888}
+.stock-card .supplier{font-size:11px;color:#aaa;margin-top:2px}
+.stock-card .qty{font-size:18px;font-weight:700;color:#3370ff;text-align:right;margin-left:12px;white-space:nowrap}
+.stock-card .qty .unit{font-size:12px;font-weight:400;color:#888;margin-left:2px}
+.stock-card .qty.low{color:#e53935}
+.stock-card .action-btns{position:absolute;right:0;top:0;bottom:0;display:flex;gap:2px}
+.stock-card .action-btns button{width:44px;border:none;background:transparent;font-size:16px;cursor:pointer}
+.loading{text-align:center;padding:40px;color:#999;font-size:14px}
+
+/* ====== 底部导航 ====== */
+.bottom-nav{position:fixed;bottom:0;left:0;right:0;background:#fff;border-top:1px solid #eee;display:flex;z-index:200;padding-bottom:env(safe-area-inset-bottom)}
+.bottom-nav button{flex:1;padding:8px 0 6px;border:none;background:none;font-size:11px;color:#888;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:2px}
+.bottom-nav button .icon{font-size:22px;line-height:1}
+.bottom-nav button.active{color:#3370ff}
+.bottom-nav button:active{background:#f5f5f5}
+
+/* ====== 弹窗 ====== */
+.modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.3);z-index:300;justify-content:center;align-items:flex-end}
+.modal-overlay.active{display:flex}
+.modal-overlay .sheet{background:#fff;border-radius:16px 16px 0 0;width:100%;max-height:85vh;overflow-y:auto;padding:20px 16px 32px;animation:slideUp .25s ease-out}
+@keyframes slideUp{from{transform:translateY(100%)}to{transform:translateY(0)}}
+.modal-overlay .sheet h3{font-size:17px;font-weight:600;margin-bottom:16px;text-align:center}
+.modal-overlay .sheet .field{margin-bottom:14px}
+.modal-overlay .sheet .field label{font-size:13px;color:#888;display:block;margin-bottom:4px}
+.modal-overlay .sheet .field input,.modal-overlay .sheet .field select{width:100%;padding:10px 12px;border:1px solid #ddd;border-radius:10px;font-size:16px;outline:none}
+.modal-overlay .sheet .field input:focus{border-color:#3370ff}
+.modal-overlay .sheet .btn-block{width:100%;padding:12px;border-radius:10px;border:none;font-size:16px;font-weight:600;cursor:pointer;margin-top:8px}
+.modal-overlay .sheet .btn-primary{background:#3370ff;color:#fff}
+.modal-overlay .sheet .btn-primary:active{background:#2962e8}
+.modal-overlay .sheet .btn-danger{background:#e53935;color:#fff}
+.modal-overlay .sheet .btn-outline{background:transparent;border:1px solid #ddd;color:#333}
+.modal-overlay .sheet .btn-outline:active{background:#f5f5f5}
+
+/* ====== 供应商筛选 ====== */
+#supplierSheet .supplier-option{padding:12px 0;border-bottom:1px solid #f0f0f0;font-size:15px;cursor:pointer}
+#supplierSheet .supplier-option:active{background:#f5f5f5}
+#supplierSheet .supplier-option.selected{color:#3370ff;font-weight:600}
+
+/* ====== 拍照识别结果 ====== */
+.recog-item{display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid #f0f0f0;font-size:14px}
+.recog-item .name{font-weight:500}
+.recog-item .qty{color:#3370ff}
+
+/* ====== Toast ====== */
+#toastEl{position:fixed;top:60px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,.8);color:#fff;padding:10px 24px;border-radius:10px;font-size:14px;z-index:9999;transition:opacity .3s;pointer-events:none}
+
+/* ====== 语音按钮特殊样式 ====== */
+.voice-large{width:72px;height:72px;border-radius:50%;background:#3370ff;color:#fff;border:none;font-size:32px;cursor:pointer;box-shadow:0 4px 16px rgba(51,112,255,.3);transition:all .2s;display:flex;align-items:center;justify-content:center;margin:0 auto}
+.voice-large:active{transform:scale(.9);background:#2962e8}
+.voice-large.recording{background:#e53935;animation:pulse 1s infinite}
+@keyframes pulse{0%{box-shadow:0 0 0 0 rgba(229,57,53,.4)}100%{box-shadow:0 0 0 20px rgba(229,57,53,0)}}
+</style>
+</head>
+<body>
+
+<div id="loginPage">
+  <div class="card">
+    <h1>🔧 SOM07/SOM08</h1>
+    <p>进出库管理系统</p>
+    <input type="text" id="loginUser" placeholder="用户名" value="caojie" onkeydown="if(event.key==='Enter')doLogin()">
+    <input type="password" id="loginPass" placeholder="密码" onkeydown="if(event.key==='Enter')doLogin()">
+    <button onclick="doLogin()">登 录</button>
+    <p id="loginError"></p>
+  </div>
+</div>
+
+<div id="mainApp">
+  <div class="topbar">
+    <h1>🔧 仓库</h1>
+    <div style="display:flex;align-items:center;gap:8px">
+      <span class="user" id="userName"></span>
+      <button class="logout" onclick="doLogout()">退出</button>
+    </div>
+  </div>
+
+  <div class="search-bar">
+    <input type="text" id="searchInput" placeholder="🔍 搜索产品..." oninput="loadStock()">
+    <button class="filter-btn" onclick="showSupplierFilter()" id="filterBtn">🏢</button>
+  </div>
+
+  <div id="stockList"><div class="loading">加载中...</div></div>
+</div>
+
+<!-- ====== 底部导航 ====== -->
+<div class="bottom-nav">
+  <button class="active" onclick="switchTab('stock')"><span class="icon">📦</span>库存</button>
+  <button onclick="openCamera()"><span class="icon">📷</span>拍照</button>
+  <button onclick="openVoice()"><span class="icon">🎤</span>语音</button>
+  <button onclick="switchTab('recent')"><span class="icon">📋</span>最近</button>
+</div>
+
+<!-- ====== 供应商筛选弹窗 ====== -->
+<div class="modal-overlay" id="supplierSheet">
+  <div class="sheet">
+    <h3>选择供应商</h3>
+    <div id="supplierOptions"></div>
+    <button class="btn-block btn-outline" style="margin-top:12px" onclick="hideSheet('supplierSheet')">取消</button>
+  </div>
+</div>
+
+<!-- ====== 入库弹窗 ====== -->
+<div class="modal-overlay" id="inboundSheet">
+  <div class="sheet">
+    <h3>📥 入库</h3>
+    <div class="field"><label>产品</label>
+      <select id="mProdSelect" style="width:100%;padding:10px 12px;border:1px solid #ddd;border-radius:10px;font-size:16px" onchange="document.getElementById('mProdManual').value='';loadSupplierForProduct(this.value)">
+        <option value="">选择已有产品</option>
+      </select>
+      <input type="text" id="mProdManual" style="width:100%;padding:10px 12px;border:1px solid #ddd;border-radius:10px;font-size:16px;margin-top:6px" placeholder="或手动输入新品名" oninput="if(this.value)document.getElementById('mProdSelect').value=''">
+    </div>
+    <div class="field"><label>数量</label><input type="number" id="mQty" min="1" value="1"></div>
+    <div class="field"><label>规格</label><input type="text" id="mSpec" placeholder="选填"></div>
+    <div class="field"><label>单位</label><input type="text" id="mUnit" value="个" placeholder="个/件/台/套"></div>
+    <button class="btn-block btn-primary" onclick="submitInbound()">✅ 确认入库</button>
+    <button class="btn-block btn-outline" style="margin-top:6px" onclick="hideSheet('inboundSheet')">取消</button>
+  </div>
+</div>
+
+<!-- ====== 语音识别弹窗 ====== -->
+<div class="modal-overlay" id="voiceSheet">
+  <div class="sheet" style="text-align:center">
+    <h3>🎤 语音输入</h3>
+    <p style="color:#888;font-size:13px;margin-bottom:20px">说出「入库 产品名 数量」或「出库 产品名 数量」</p>
+    <button class="voice-large" id="voiceBtn" onclick="toggleVoice()">🎤</button>
+    <p id="voiceResult" style="margin-top:16px;font-size:15px;min-height:24px"></p>
+    <button class="btn-block btn-outline" style="margin-top:20px" onclick="hideSheet('voiceSheet')">关闭</button>
+  </div>
+</div>
+
+<!-- ====== 拍照识别弹窗 ====== -->
+<div class="modal-overlay" id="cameraSheet">
+  <div class="sheet">
+    <h3>📷 拍照识别</h3>
+    <p style="color:#888;font-size:13px;text-align:center;margin-bottom:12px">拍摄送货单，AI自动识别入库</p>
+    <div style="display:flex;gap:12px;margin-bottom:16px">
+      <label style="flex:1;padding:20px;border:2px dashed #ddd;border-radius:12px;text-align:center;cursor:pointer;font-size:14px;color:#888">
+        📷 拍照或选择图片
+        <input type="file" accept="image/*" capture="environment" style="display:none" onchange="uploadForRecog(this)">
+      </label>
+    </div>
+    <div id="recogResult"></div>
+    <button class="btn-block btn-outline" onclick="hideSheet('cameraSheet')">关闭</button>
+  </div>
+</div>
+
+<!-- ====== AI确认弹窗 ====== -->
+<div class="modal-overlay" id="aiConfirmSheet">
+  <div class="sheet">
+    <h3>📥 确认入库</h3>
+    <div id="aiItems"></div>
+    <div id="aiSupplier" style="margin-top:8px;color:#888;font-size:13px"></div>
+    <button class="btn-block btn-primary" onclick="confirmAIInbound()" style="margin-top:12px">✅ 确认入库</button>
+    <button class="btn-block btn-outline" style="margin-top:6px" onclick="hideSheet('aiConfirmSheet')">取消</button>
+  </div>
+</div>
+
+<script>
+let token='',username='',displayName='',selectedSupplier=0;
+function $_(id){return document.getElementById(id)}
+function showSheet(id){$_(id).classList.add('active')}
+function hideSheet(id){$_(id).classList.remove('active')}
+
+// ====== 登录 ======
+async function doLogin(){
+  const u=$_('loginUser').value.trim(),p=$_('loginPass').value.trim();
+  if(!u||!p){$_('loginError').textContent='请输入用户名和密码';$_('loginError').style.display='block';return;}
+  const j=await(await fetch('api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:u,password:p})})).json();
+  if(!j.success){$_('loginError').textContent=j.error;$_('loginError').style.display='block';return;}
+  token=j.data.token;displayName=j.data.displayName;
+  localStorage.setItem('m_token',token);localStorage.setItem('m_user',displayName);
+  $_('loginPage').style.display='none';$_('mainApp').style.display='block';
+  $_('userName').textContent=displayName;
+  loadStock();loadSuppliers();
+}
+function doLogout(){localStorage.clear();location.reload()}
+
+// ====== 自动登录 ======
+(function(){
+  var t=localStorage.getItem('m_token'),u=localStorage.getItem('m_user');
+  if(t){token=t;displayName=u||'';
+    fetch('api/inventory',{headers:{'Authorization':token}}).then(r=>r.json()).then(d=>{
+      if(d.success){$_('loginPage').style.display='none';$_('mainApp').style.display='block';$_('userName').textContent=displayName;loadStock();loadSuppliers();}
+    }).catch(function(){});
+  }
+})();
+
+// ====== 库存列表 ======
+async function loadStock(){
+  try{
+    const q=$_('searchInput').value.trim();
+    var url=selectedSupplier?'api/inventory/supplier/'+selectedSupplier:'api/inventory';
+    var j=await(await fetch(url,{headers:{'Authorization':token}})).json();
+    if(!j.success){$_('stockList').innerHTML='<div class="loading">加载失败</div>';return;}
+    var data=j.data;
+    if(q)data=data.filter(r=>r.name.includes(q)||(r.spec||'').includes(q)||(r.supplier_name||'').includes(q));
+    if(!data.length){$_('stockList').innerHTML='<div class="loading">📭 无数据</div>';return;}
+    $_('stockList').innerHTML=data.map(r=>{
+      var s=r.stock;var cls=s<5?'low':'';
+      return '<div class="stock-card" onclick="openInbound('+r.id+',\''+r.name+'\')">'+
+        '<div class="info"><div class="name">'+r.name+'</div>'+
+        '<div class="spec">'+(r.spec||'')+'</div>'+
+        '<div class="supplier">'+(r.supplier_name||'')+'</div></div>'+
+        '<div class="qty '+cls+'">'+s+' <span class="unit">'+r.unit+'</span></div></div>';
+    }).join('');
+  }catch(e){$_('stockList').innerHTML='<div class="loading">加载失败</div>'}
+}
+
+// ====== 供应商 ======
+async function loadSuppliers(){
+  var j=await(await fetch('api/suppliers',{headers:{'Authorization':token}})).json();
+  if(!j.success)return;
+  var s=j.data;
+  $_('supplierOptions').innerHTML='<div class="supplier-option'+(selectedSupplier===0?' selected':'')+'" onclick="selectSupplier(0,\'所有供应商\')">🏢 所有供应商</div>'+
+    s.map(x=>'<div class="supplier-option'+(selectedSupplier===x.id?' selected':'')+'" onclick="selectSupplier('+x.id+',\''+x.name+'\')">'+x.name+'</div>').join('');
+  // 产品下拉
+  var pj=await(await fetch('api/products',{headers:{'Authorization':token}})).json();
+  if(pj.success)$_('mProdSelect').innerHTML='<option value="">选择已有产品</option>'+pj.data.map(x=>'<option value="'+x.id+'">'+x.name+(x.spec?' ('+x.spec+')':'')+'</option>').join('');
+}
+function selectSupplier(id,name){
+  selectedSupplier=id;hideSheet('supplierSheet');
+  $_('filterBtn').textContent=id?'🏢':'🏢';loadStock();
+}
+
+// ====== 入库 ======
+function openInbound(id,name){
+  $_('mProdSelect').value=id||'';
+  $_('mProdManual').value=name||'';
+  $_('mQty').value=1;$_('mSpec').value='';$_('mUnit').value='个';
+  showSheet('inboundSheet');
+}
+async function submitInbound(){
+  var sel=$_('mProdSelect').value,manual=$_('mProdManual').value.trim();
+  var qty=+$_('mQty').value,spec=$_('mSpec').value,unit=$_('mUnit').value||'个';
+  if(!sel&&!manual){alert('请选择或输入产品');return;}
+  var pid;
+  if(manual){
+    var cj=await(await fetch('api/products',{method:'POST',headers:{'Authorization':token,'Content-Type':'application/json'},body:JSON.stringify({name:manual,spec:spec,unit:unit})})).json();
+    if(!cj.success){alert('创建产品失败: '+cj.error);return;}
+    pid=cj.data.id;
+  }else pid=+sel;
+  var j=await(await fetch('api/inbound',{method:'POST',headers:{'Authorization':token,'Content-Type':'application/json'},body:JSON.stringify({productId:pid,quantity:qty,date:new Date().toISOString().split('T')[0]})})).json();
+  if(j.success){hideSheet('inboundSheet');showToast('✅ 入库成功');loadStock();}
+  else alert('入库失败: '+j.error);
+}
+
+// ====== 语音（自录上传版） ======
+let mediaRecorder = null;
+let audioChunks = [];
+function openVoice(){
+  showSheet('voiceSheet');
+  $_('voiceResult').textContent='';
+  if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){
+    $_('voiceResult').innerHTML='⚠️ 浏览器不支持录音<br><br>请用 Chrome / Edge / Safari 最新版';
+    return;
+  }
+  $_('voiceResult').innerHTML='🎤 点击下方按钮开始录音<br><small style="color:#888">松开或再次点击停止录音，自动识别</small>';
+  $_('voiceBtn').textContent='🎤';
+  $_('voiceBtn').className='voice-large';
+}
+async function toggleVoice(){
+  const btn = $_('voiceBtn');
+  if(mediaRecorder && mediaRecorder.state === 'recording'){
+    mediaRecorder.stop();
+    return;
+  }
+  try{
+    const stream = await navigator.mediaDevices.getUserMedia({audio:true});
+    audioChunks = [];
+    mediaRecorder = new MediaRecorder(stream, {mimeType: MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : 'audio/mp4'});
+    mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
+    mediaRecorder.onstop = async () => {
+      stream.getTracks().forEach(t => t.stop());
+      btn.textContent='⏳ 识别中...';
+      btn.className='voice-large';
+      const mimeType = mediaRecorder.mimeType;
+      const blob = new Blob(audioChunks, {type: mimeType});
+      const reader = new FileReader();
+      reader.onload = async () => {
+        const base64 = reader.result.split(',')[1];
+        const tk = 'Bearer ' + token;
+        const r = await fetch('/inventory/api/speech/recognize', {
+          method:'POST',
+          headers:{'Authorization':tk,'Content-Type':'application/json'},
+          body:JSON.stringify({audio: base64, mimeType})
+        });
+        const j = await r.json();
+        if(j.success && j.text){
+          $_('voiceResult').innerHTML='✅ 识别到：<b style="font-size:16px;color:#3370ff">'+j.text+'</b>';
+          handleVoiceCommand(j.text);
+        } else {
+          $_('voiceResult').textContent='❌ 识别失败：'+(j.error||'未识别到语音');
+        }
+        btn.textContent='🎤';
+      };
+      reader.readAsDataURL(blob);
+    };
+    mediaRecorder.start();
+    btn.className='voice-large recording';
+    btn.textContent='🔴';
+    $_('voiceResult').innerHTML='🔴 录音中... 请说话<br><small style="color:#888">点击按钮停止录音</small>';
+  } catch(e){
+    $_('voiceResult').textContent='❌ 无法访问麦克风：'+e.message;
+  }
+}
+function handleVoiceCommand(text){
+  if(text.includes('入库')||text.includes('进库')){
+    var m=text.match(/(?:入库|进库)\s*(.+?)\s*(\d+(?:\.\d+)?)\s*(个|件|台|套|支|桶|根|公斤|米)?/);
+    if(m){$_('mProdManual').value=m[1];$_('mQty').value=m[2];$_('mUnit').value=m[3]||'个';hideSheet('voiceSheet');openInbound(0,m[1]);}
+    else showToast('说「入库 产品名 数量」');
+  }else if(text.includes('出库')){
+    var m=text.match(/(?:出库)\s*(.+?)\s*(\d+(?:\.\d+)?)\s*(个|件|台|套|支|桶|根|公斤|米)?/);
+    if(m)showToast('✅ 出库 '+m[1]+' ×'+m[2]);
+    else showToast('说「出库 产品名 数量」');
+  }else{
+    var m=text.match(/(.+?)\s*(\d+(?:\.\d+)?)\s*(个|件|台|套|支|桶|根|公斤|米)?/);
+    if(m&&m[1].length>=2){$_('mProdManual').value=m[1];$_('mQty').value=m[2];$_('mUnit').value=m[3]||'个';hideSheet('voiceSheet');openInbound(0,m[1]);}
+    else showToast('已识别: '+text);
+  }
+}
+
+// ====== 拍照识别 ======
+function openCamera(){showSheet('cameraSheet');$_('recogResult').innerHTML='';}
+async function uploadForRecog(input){
+  var f=input.files[0];if(!f)return;
+  $_('recogResult').innerHTML='<div class="loading">⏳ 识别中...</div>';
+  var fd=new FormData();fd.append('image',f);
+  var up=await(await fetch('api/upload',{method:'POST',headers:{'Authorization':token},body:fd})).json();
+  if(!up.success){$_('recogResult').innerHTML='❌ 上传失败';return;}
+  // 识别带超时
+  var ctrl=new AbortController();var tmr=setTimeout(function(){ctrl.abort()},120000);
+  try{
+    var j=await(await fetch('api/recognize',{method:'POST',headers:{'Authorization':token,'Content-Type':'application/json'},body:JSON.stringify({path:up.data.path}),signal:ctrl.signal})).json();
+    clearTimeout(tmr);
+    if(!j.success||!j.data||!j.data.items||!j.data.items.length){$_('recogResult').innerHTML='<div class="recog-item">❌ 识别失败，请手工录入</div>';return;}
+  }catch(e){$_('recogResult').innerHTML='<div class="recog-item">❌ 识别超时，请重试或手工录入</div>';return;}
+  window._recog=j.data;
+  $_('recogResult').innerHTML=j.data.items.map(x=>'<div class="recog-item"><span class="name">'+x.name+'</span><span>'+x.qty+' '+x.unit+'</span></div>').join('');
+  // 显示确认弹窗
+  $_('aiItems').innerHTML=j.data.items.map(x=>'<div class="recog-item"><span class="name">'+x.name+'</span><span>'+x.qty+' '+x.unit+'</span></div>').join('');
+  $_('aiSupplier').textContent='供应商: '+(j.data.supplier||'?')+' | 日期: '+(j.data.date||'?');
+  showSheet('aiConfirmSheet');
+}
+async function confirmAIInbound(){
+  var info=window._recog;if(!info||!info.items)return;
+  for(var item of info.items){
+    var pj=await(await fetch('api/products',{headers:{'Authorization':token}})).json();
+    var prod=pj.data&&pj.data.find(p=>p.name===item.name||p.name.includes(item.name)||item.name.includes(p.name));
+    var pid;
+    if(prod)pid=prod.id;
+    else{
+      var cj=await(await fetch('api/products',{method:'POST',headers:{'Authorization':token,'Content-Type':'application/json'},body:JSON.stringify({name:item.name,spec:item.spec||'',unit:item.unit||'个'})})).json();
+      if(!cj.success)continue;pid=cj.data.id;
+    }
+    await fetch('api/inbound',{method:'POST',headers:{'Authorization':token,'Content-Type':'application/json'},body:JSON.stringify({productId:pid,quantity:item.qty||1,date:info.date||new Date().toISOString().split('T')[0],docRef:'AI识别'})});
+  }
+  hideSheet('cameraSheet');hideSheet('aiConfirmSheet');showToast('✅ 入库完成');loadStock();
+}
+
+// ====== 最近操作 ======
+function switchTab(tab){
+  document.querySelectorAll('.bottom-nav button').forEach(b=>b.classList.remove('active'));
+  if(tab==='stock'){document.querySelector('.bottom-nav button:first-child').classList.add('active');loadStock();}
+  else if(tab==='recent'){
+    document.querySelectorAll('.bottom-nav button')[3].classList.add('active');
+    loadRecent();
+  }
+}
+async function loadRecent(){
+  var j=await(await fetch('api/changelog',{headers:{'Authorization':token}})).json();
+  if(!j.success||!j.data.length){$_('stockList').innerHTML='<div class="loading">暂无记录</div>';return;}
+  $_('stockList').innerHTML=j.data.slice(0,20).map(r=>{
+    var icon=r.action_type==='inbound'?'📥':r.action_type==='outbound'?'📤':'⏪';
+    return '<div class="stock-card"><div class="info"><div class="name">'+icon+' '+r.product_name+'</div>'+
+      '<div class="spec">'+r.action_type+' ×'+r.quantity+' | '+(new Date(r.created_at).toLocaleString())+'</div>'+
+      '<div class="supplier">'+(r.details||'')+'</div></div></div>';
+  }).join('');
+}
+
+// ====== Toast ======
+function showToast(msg){
+  var el=$_('toastEl');
+  if(!el){el=document.createElement('div');el.id='toastEl';el.style.cssText='position:fixed;top:60px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,.8);color:#fff;padding:10px 24px;border-radius:10px;font-size:14px;z-index:9999;transition:opacity .3s;pointer-events:none';document.body.appendChild(el);}
+  el.textContent=msg;el.style.opacity='1';
+  setTimeout(function(){el.style.opacity='0';},2000);
+}
+</script>
+</body>
+</html>

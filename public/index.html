@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SOM07/SOM08 进出库管理系统</title>
+<link rel="stylesheet" href="style.css?v=2">
+</head>
+<body>
+
+<div id="loginPage" class="login-page">
+  <div class="login-card">
+    <div style="font-size:32px;text-align:center;margin-bottom:8px;">🔧</div>
+    <h1 style="text-align:center;font-size:20px;margin-bottom:4px;">船舶进出库管理</h1>
+    <p style="text-align:center;color:#888;margin-bottom:24px;font-size:14px;">SOM07 · SOM08</p>
+    <div class="form-row"><label>用户名</label><input type="text" id="loginUser" class="form-input" placeholder="caojie" onkeydown="if(event.key==='Enter')doLogin()"></div>
+    <div class="form-row"><label>密码</label><input type="password" id="loginPass" class="form-input" placeholder="••••••" onkeydown="if(event.key==='Enter')doLogin()"></div>
+    <button class="btn btn-primary" style="width:100%;padding:10px;margin-top:8px;" onclick="doLogin()">登 录</button>
+    <p id="loginError" style="color:#e53935;font-size:13px;text-align:center;margin-top:8px;display:none;"></p>
+  </div>
+</div>
+
+<!-- ====== 选船页 ====== -->
+<div id="shipSelectPage" class="login-page" style="display:none;">
+  <div style="width:100%;max-width:720px;padding:20px;">
+    <h1 style="text-align:center;font-size:22px;margin-bottom:6px;color:#1a3a5c;">🚢 选择库存系统</h1>
+    <p style="text-align:center;color:#666;margin-bottom:28px;font-size:14px;">每艘船独立管理库存，进入后可在左上角随时切换</p>
+    <div style="display:flex;gap:20px;justify-content:center;flex-wrap:wrap;">
+      <div class="ship-card" onclick="selectShip('SOM07')">
+        <div style="font-size:44px;">🚢</div>
+        <div style="font-size:22px;font-weight:700;color:#1a3a5c;margin:10px 0 4px;">SOM07</div>
+        <div style="font-size:13px;color:#666;" id="shipStat07">加载中...</div>
+        <div style="margin-top:14px;font-size:14px;color:#2b6cb0;font-weight:600;">进入系统 →</div>
+      </div>
+      <div class="ship-card" onclick="selectShip('SOM08')">
+        <div style="font-size:44px;">🚢</div>
+        <div style="font-size:22px;font-weight:700;color:#1a3a5c;margin:10px 0 4px;">SOM08</div>
+        <div style="font-size:13px;color:#666;" id="shipStat08">加载中...</div>
+        <div style="margin-top:14px;font-size:14px;color:#2b6cb0;font-weight:600;">进入系统 →</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="mainApp" style="display:none;">
+<div class="topbar">
+  <div class="topbar-left">
+    <div class="ship-switcher">
+      <span class="ship-pill" data-ship="SOM07" onclick="switchShip('SOM07')">SOM07</span>
+      <span class="ship-pill" data-ship="SOM08" onclick="switchShip('SOM08')">SOM08</span>
+    </div>
+    <div class="nav-tabs">
+      <span class="nav-tab active" onclick="switchTab('inventory')">📊 库存总览</span>
+      <span class="nav-tab" onclick="switchTab('dashboard')">📈 看板</span>
+      <span class="nav-tab" onclick="switchTab('inrecords')">📥 入库记录</span>
+      <span class="nav-tab" onclick="switchTab('outrecords')">📤 出库记录</span>
+      <span class="nav-tab" onclick="switchTab('changelog')">📋 变更日志</span>
+      <span class="nav-tab" onclick="showHistoryDocs()">📁 历史单据</span>
+    </div>
+  </div>
+  <div class="topbar-right">
+    <span class="user-badge" style="color:#666">👤 <span id="userName"></span></span>
+    <button class="btn btn-sm" onclick="showRegister()" id="regBtn" style="font-size:12px">注册</button>
+    <button class="btn btn-sm" onclick="doLogout()">退出</button>
+  </div>
+</div>
+
+<div class="main-container">
+
+<div id="tabInventory" class="tab-content">
+  <div class="table-header">
+    <h2>📊 库存总览</h2>
+    <div class="table-actions">
+      <select id="supplierFilter" style="padding:6px 10px;border:1px solid #ddd;border-radius:6px;font-size:13px;" onchange="toggleSupplierView()">
+        <option value="">所有供应商</option>
+      </select>
+      <input type="text" class="search-input" id="searchInput" placeholder="🔍 搜索..." oninput="loadInventory()" style="width:140px">
+      <span class="count-badge" id="countBadge">0 项</span>
+      <div class="zoom-controls"><button class="zoom-btn" onclick="zoomTable(-1)" title="缩小">−</button><span class="zoom-level" id="zoomLevel">100%</span><button class="zoom-btn" onclick="zoomTable(1)" title="放大">+</button></div>
+      <button class="btn btn-sm" id="expandAllBtn" onclick="expandAll()" style="display:none">📂 全部展开</button>
+      <button class="btn btn-sm" id="rollbackBtn" onclick="doRollback()">⏪ 回滚</button>
+      <button class="btn btn-sm" onclick="showSupplierManager()">🏢 供应商</button>
+      <button class="btn btn-sm" id="batchOutBtn" onclick="toggleBatchOutbound()">📤 批量出库</button>
+      <button class="btn btn-sm" onclick="showManualInbound()">📥 手工入库</button>
+      <button class="btn btn-sm" onclick="loadInventory()">🔄 刷新</button>
+    </div>
+  </div>
+  <div class="table-wrapper">
+    <table id="inventoryTable">
+      <thead><tr>
+        <th id="batchCheckHead" style="display:none;width:40px"><input type="checkbox" onchange="toggleAllChecks(this)"></th>
+        <th onclick="sortTable(0)">供应商<span class="sort-icon">↕</span></th>
+        <th onclick="sortTable(1)">物品名称<span class="sort-icon">↕</span></th>
+        <th onclick="sortTable(2)">规格<span class="sort-icon">↕</span></th>
+        <th onclick="sortTable(3)">单位<span class="sort-icon">↕</span></th>
+        <th onclick="sortTable(4)">入库总数<span class="sort-icon">↕</span></th>
+        <th onclick="sortTable(5)">出库总数<span class="sort-icon">↕</span></th>
+        <th onclick="sortTable(6)">当前库存<span class="sort-icon">↕</span></th>
+        <th>单据</th>
+        <th>操作</th>
+      </tr></thead>
+      <tbody id="inventoryBody"><tr><td colspan="10" class="loading">加载中...</td></tr></tbody>
+    </table>
+  </div>
+</div>
+
+<div id="tabChangelog" class="tab-content" style="display:none;">
+  <div class="table-header">
+    <h2>📋 变更日志</h2>
+    <div class="table-actions">
+      <input type="text" class="search-input" id="logSearchInput" placeholder="🔍 搜索..." oninput="loadChangelog()" style="width:200px">
+      <span class="count-badge" id="logBadge">0 条</span>
+      <button class="btn btn-sm" onclick="loadChangelog()">🔄 刷新</button>
+    </div>
+  </div>
+  <div class="table-wrapper">
+    <table id="logTable">
+      <thead><tr><th>时间</th><th>操作</th><th>产品</th><th>数量</th><th>库存(前→后)</th><th>操作人</th><th>备注</th></tr></thead>
+      <tbody id="logBody"><tr><td colspan="7" class="loading">加载中...</td></tr></tbody>
+    </table>
+  </div>
+</div>
+
+<div id="tabDashboard" class="tab-content" style="display:none;">
+  <div class="table-header"><h2>📈 库存看板</h2>
+    <div class="table-actions">
+      <button class="btn btn-sm" onclick="loadDashboard()">🔄 刷新</button>
+    </div>
+  </div>
+  <div class="dash-cards">
+    <div class="dash-card"><div class="dash-card-num" id="dashProducts">-</div><div class="dash-card-label">物品种类</div></div>
+    <div class="dash-card"><div class="dash-card-num" id="dashStock">-</div><div class="dash-card-label">当前库存</div></div>
+    <div class="dash-card"><div class="dash-card-num" id="dashIn">-</div><div class="dash-card-label">累计入库</div></div>
+    <div class="dash-card"><div class="dash-card-num" id="dashOut">-</div><div class="dash-card-label">累计出库</div></div>
+  </div>
+  <div class="dash-charts">
+    <div class="dash-chart-box"><h3>各供应商 入库 / 出库 / 库存对比</h3><div id="chartBar" style="height:340px"></div></div>
+    <div class="dash-chart-box"><h3>当前库存占比（按供应商）</h3><div id="chartPie" style="height:340px"></div></div>
+  </div>
+  <div class="dash-chart-box" style="margin:16px 20px 20px"><h3>供应商明细</h3>
+    <div class="table-wrapper" style="padding:0"><table><thead><tr><th>供应商</th><th>物品种数</th><th>累计入库</th><th>累计出库</th><th>当前库存</th></tr></thead>
+      <tbody id="dashBody"><tr><td colspan="5" class="loading">加载中...</td></tr></tbody></table></div>
+  </div>
+</div>
+
+<!-- === 入库记录 Tab === -->
+<div id="tabInrecords" class="tab-content" style="display:none">
+  <div class="table-header"><h2>📥 入库记录</h2>
+    <div class="table-actions">
+      <input type="text" class="search-input" id="inRecSearch" placeholder="🔍 搜索..." oninput="loadInRecords()" style="width:200px">
+      <span class="count-badge" id="inRecBadge">0 条</span>
+      <button class="btn btn-sm" onclick="loadInRecords()">🔄 刷新</button>
+    </div>
+  </div>
+  <div class="table-wrapper">
+    <table><thead><tr><th>时间</th><th>产品</th><th>规格</th><th>数量</th><th>单位</th><th>供应商</th><th>操作人</th><th>送货单</th></tr></thead>
+      <tbody id="inRecBody"><tr><td colspan="8" class="loading">加载中...</td></tr></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- === 出库记录 Tab === -->
+<div id="tabOutrecords" class="tab-content" style="display:none">
+  <div class="table-header"><h2>📤 出库记录</h2>
+    <div class="table-actions">
+      <input type="text" class="search-input" id="outRecSearch" placeholder="🔍 搜索..." oninput="loadOutRecords()" style="width:200px">
+      <span class="count-badge" id="outRecBadge">0 条</span>
+      <button class="btn btn-sm" onclick="loadOutRecords()">🔄 刷新</button>
+    </div>
+  </div>
+  <div class="table-wrapper">
+    <table><thead><tr><th>时间</th><th>产品</th><th>规格</th><th>数量</th><th>单位</th><th>领用人</th><th>操作人</th><th>备注</th></tr></thead>
+      <tbody id="outRecBody"><tr><td colspan="8" class="loading">加载中...</td></tr></tbody>
+    </table>
+  </div>
+</div>
+
+</div>
+
+<button class="chat-fab" id="chatFab" onclick="toggleChat()">💬</button>
+<div class="chat-panel" id="chatPanel">
+  <div class="chat-header"><span>💬 AI助手</span><button class="chat-close" onclick="toggleChat()">✕</button></div>
+  <div class="chat-messages" id="chatMessages">
+    <div class="msg ai"><div class="msg-bubble">👋 登录成功！<br><br>试试:<br>• "入库 4寸止回阀 3件"<br>• "出库 冷冻油 2桶"<br>• "查库存"<br>• 📷 上传送货单</div></div>
+  </div>
+  <div class="chat-input-area">
+    <label class="upload-btn">📷<input type="file" accept="image/*" onchange="uploadImage(this)" hidden></label>
+    <button class="voice-btn" id="voiceBtn" onclick="startVoice()" title="语音输入">🎤</button>
+    <input type="text" class="chat-input" id="chatInput" placeholder="输入指令..." onkeydown="if(event.key==='Enter')sendMessage()">
+    <button class="send-btn" onclick="sendMessage()">发送</button>
+  </div>
+</div>
+</div>
+
+<!-- ====== 手工入库弹窗 ====== -->
+<div class="modal-overlay" id="inboundModal" onclick="if(event.target===this)hideModal('inboundModal')">
+  <div class="modal modal-wide" style="max-width:640px"><div class="modal-header"><h3>📥 手工入库</h3><button class="modal-close" onclick="hideModal('inboundModal')">✕</button></div>
+  <div class="modal-body">
+    <input type="hidden" id="inProdId">
+    <div class="form-row"><label>新品</label>
+      <div style="flex:1;position:relative">
+        <input type="text" id="inProdManual" class="form-input" placeholder="输入新品名称（回车确认）" style="width:100%;font-size:16px;padding:10px" oninput="fuzzyCheck(this.value)" onkeydown="if(event.key==='Enter'){event.preventDefault();var s=$S('fuzzySuggest');if(s.style.display==='block'&&s.firstChild){s.firstChild.click();return;}document.getElementById('inQty').focus()}">
+        <div id="fuzzySuggest" style="position:absolute;top:100%;left:0;right:0;background:#fff;border:1px solid #ddd;border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,.1);z-index:999;max-height:200px;overflow-y:auto;display:none"></div>
+      </div>
+    </div>
+    <div class="form-row"><label>或选已有</label>
+      <select id="inProdSelect" style="flex:1;padding:8px;border:1px solid #ddd;border-radius:6px;font-size:14px;" onchange="document.getElementById('inProdManual').value='';if(this.value)loadSupplierForProduct(this.value)">
+        <option value="">选择产品</option>
+      </select>
+    </div>
+    <div class="form-row"><label>供应商 <span style="color:#e53935">*</span></label>
+      <select id="inSupplier" style="flex:1;padding:8px;border:1px solid #ddd;border-radius:6px;font-size:14px" onkeydown="if(event.key==='Enter'){event.preventDefault();document.getElementById('inQty').focus()}">
+        <option value="">选择供应商</option>
+      </select>
+    </div>
+    <div class="form-row"><label>数量</label><input type="number" id="inQty" class="form-input" min="1" value="1" onkeydown="if(event.key==='Enter'){event.preventDefault();document.getElementById('inSpec').focus()}"></div>
+    <div class="form-row"><label>规格/型号</label><input type="text" id="inSpec" class="form-input" placeholder="选填" onkeydown="if(event.key==='Enter'){event.preventDefault();document.getElementById('inUnit').focus()}"></div>
+    <div class="form-row"><label>单位</label><input type="text" id="inUnit" class="form-input" placeholder="个/件/台/套/支..." value="个" list="unitList" onkeydown="if(event.key==='Enter'){event.preventDefault();document.getElementById('inDate').focus()}">
+      <datalist id="unitList"><option>个</option><option>件</option><option>台</option><option>套</option><option>支</option><option>桶</option><option>根</option><option>公斤</option><option>米</option></datalist>
+    </div>
+    <div class="form-row"><label>日期</label><input type="date" id="inDate" class="form-input" onkeydown="if(event.key==='Enter'){event.preventDefault();submitInbound()}"></div>
+  </div>
+  <div class="modal-footer"><button class="btn btn-primary" onclick="submitInbound()">✅ 确认入库</button></div></div>
+</div>
+
+<!-- ====== 出库弹窗 ====== -->
+<div class="modal-overlay" id="outboundModal" onclick="if(event.target===this)hideModal('outboundModal')">
+  <div class="modal"><div class="modal-header"><h3>📤 出库</h3><button class="modal-close" onclick="hideModal('outboundModal')">✕</button></div>
+  <div class="modal-body">
+    <input type="hidden" id="outProdId">
+    <div class="form-row"><label>产品</label><span id="outProdName" class="form-value"></span></div>
+    <div class="form-row"><label>数量</label><input type="number" id="outQty" class="form-input" min="1" value="1"></div>
+    <div class="form-row"><label>日期</label><input type="date" id="outDate" class="form-input"></div>
+    <div class="form-row"><label>领用人 <span style="color:#e53935">*</span></label><input type="text" id="outDept" class="form-input" placeholder="领用人姓名" required></div>
+    <div class="form-row"><label>备注</label><input type="text" id="outRemark" class="form-input" placeholder="出库备注（选填）"></div>
+  </div>
+  <div class="modal-footer"><button class="btn btn-danger" onclick="submitOutbound()">✅ 确认出库</button></div></div>
+</div>
+
+<!-- ====== 批量出库确认弹窗 ====== -->
+<div class="modal-overlay" id="batchOutModal2" onclick="if(event.target===this)hideModal('batchOutModal2')">
+  <div class="modal modal-wide" style="max-width:500px"><div class="modal-header"><h3>📤 确认出库</h3><button class="modal-close" onclick="hideModal('batchOutModal2')">✕</button></div>
+  <div class="modal-body">
+    <div class="form-row"><label>领用人 <span style="color:#e53935">*</span></label><input type="text" id="batchOutDept2" class="form-input" placeholder="领用人姓名" required></div>
+    <div class="form-row"><label>日期</label><input type="date" id="batchOutDate2" class="form-input"></div>
+    <div id="batchOutItems2"></div>
+  </div>
+  <div class="modal-footer"><button class="btn btn-danger" onclick="confirmBatchOutbound()">✅ 确认出库</button></div></div>
+</div>
+
+<!-- ====== 产品详情弹窗（替代原来的"查看单据"）====== -->
+<div class="modal-overlay" id="docModal" onclick="if(event.target===this)hideModal('docModal')">
+  <div class="modal modal-wide" style="max-width:550px"><div class="modal-header"><h3>📄 产品详情</h3><button class="modal-close" onclick="hideModal('docModal')">✕</button></div>
+  <div class="modal-body" id="docBody">加载中...</div></div>
+</div>
+
+<!-- ====== AI识别确认入库弹窗 ====== -->
+<div class="modal-overlay" id="aiConfirmModal" onclick="if(event.target===this)hideModal('aiConfirmModal')">
+  <div class="modal modal-wide" style="max-width:1100px;width:95vw"><div class="modal-header"><h3>📥 AI识别确认入库 <small style="font-size:11px;color:#888;font-weight:normal">（点击窗外可缩为浮窗）</small></h3><button class="modal-close" onclick="closeAiModalFinally()">✕</button></div>
+  <div class="modal-body" id="aiConfirmBody" style="max-height:75vh;overflow-y:auto;padding:24px"></div>
+  <div class="modal-footer"><button class="btn" onclick="hideModal('aiConfirmModal')">缩为浮窗</button><button class="btn btn-primary" onclick="confirmAIInbound()">✅ 确认入库</button></div></div>
+</div>
+
+<!-- ====== 历史单据弹窗 ====== -->
+<div class="modal-overlay" id="historyDocsModal" onclick="if(event.target===this)hideModal('historyDocsModal')">
+  <div class="modal modal-wide" style="max-width:800px"><div class="modal-header"><h3>📁 历史单据</h3><button class="modal-close" onclick="hideModal('historyDocsModal')">✕</button></div>
+  <div class="modal-body" id="historyDocsBody" style="max-height:70vh;overflow-y:auto;padding:20px">加载中...</div></div>
+</div>
+
+<!-- ====== AI识别入库浮窗（最小化状态） ====== -->
+<div id="aiFloatBtn" onclick="restoreAiModal()" style="display:none;position:fixed;bottom:24px;right:24px;z-index:9999;background:linear-gradient(135deg,#3370ff,#2962e8);color:#fff;padding:14px 22px;border-radius:30px;box-shadow:0 6px 20px rgba(51,112,255,.4);cursor:pointer;font-size:15px;font-weight:600;align-items:center;gap:8px;transition:all .2s">
+  📥 AI入库（点击恢复）
+</div>
+
+<style>
+/* AI识别弹窗最小化状态 */
+#aiConfirmModal.minimized .modal{transform:scale(.85);opacity:.3;pointer-events:none;}
+#aiConfirmModal.minimized{pointer-events:none;}
+</style>
+
+<!-- ====== 自然语言确认弹窗 ====== -->
+<div class="modal-overlay" id="nlConfirmModal" onclick="if(event.target===this)hideModal('nlConfirmModal')">
+  <div class="modal" style="max-width:360px"><div class="modal-header"><h3>📋 确认操作</h3><button class="modal-close" onclick="hideModal('nlConfirmModal')">✕</button></div>
+  <div class="modal-body" id="nlConfirmBody"></div>
+  <div class="modal-footer"><button class="btn" onclick="hideModal('nlConfirmModal')">取消</button><button class="btn btn-primary" id="nlConfirmBtn" onclick="confirmNL()">✅ 确认</button></div></div>
+</div>
+
+<!-- ====== 供应商管理弹窗 ====== -->
+<div class="modal-overlay" id="supplierModal" onclick="if(event.target===this)hideModal('supplierModal')">
+  <div class="modal modal-wide" style="max-width:500px"><div class="modal-header"><h3>🏢 供应商管理</h3><button class="modal-close" onclick="hideModal('supplierModal')">✕</button></div>
+  <div class="modal-body">
+    <div style="display:flex;gap:6px;margin-bottom:12px">
+      <input type="text" id="newSupplierName" class="form-input" placeholder="新供应商名称" style="flex:1">
+      <button class="btn btn-primary btn-sm" onclick="addSupplier()">＋ 新增</button>
+    </div>
+    <div id="supplierList"></div>
+  </div>
+</div></div>
+
+<!-- ====== 注册弹窗 ====== -->
+<div class="modal-overlay" id="regModal" onclick="if(event.target===this)hideModal('regModal')">
+  <div class="modal" style="max-width:360px"><div class="modal-header"><h3>📝 注册</h3><button class="modal-close" onclick="hideModal('regModal')">✕</button></div>
+  <div class="modal-body">
+    <div class="form-row"><label>用户名</label><input type="text" id="regUser" class="form-input" placeholder="输入用户名"></div>
+    <div class="form-row"><label>密码</label><input type="password" id="regPass" class="form-input" placeholder="至少4位"></div>
+    <p id="regMsg" style="font-size:13px;text-align:center;display:none"></p>
+  </div>
+  <div class="modal-footer"><button class="btn btn-primary" onclick="doRegister()">注册</button></div></div>
+</div>
+
+<div id="batchDocsModal" class="modal-overlay" onclick="if(event.target===this)hideModal('batchDocsModal')"><div class="modal" style="max-width:800px"><div class="modal-header"><b id="batchDocsTitle"></b><span onclick="hideModal('batchDocsModal')" style="cursor:pointer;font-size:20px;line-height:1">✕</span></div><div class="modal-body" id="batchDocsBody" style="max-height:65vh;overflow-y:auto"></div></div></div>
+
+<script src="lib/echarts.min.js"></script>
+<script src="app.js?v=2"></script>
+<script>window.onerror=function(m,u,l){var e=document.createElement('div');e.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#e53935;color:#fff;padding:12px;font-size:13px;z-index:9999';e.textContent='JS错误: '+m+' (行'+l+')';document.body.appendChild(e)};</script>
+<div id="toast" style="position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:#333;color:#fff;padding:10px 24px;border-radius:8px;font-size:14px;z-index:9999;display:none;box-shadow:0 4px 12px rgba(0,0,0,0.3);transition:opacity 0.3s;"></div>
+</body>
+</html>
