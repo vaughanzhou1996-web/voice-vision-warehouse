@@ -528,6 +528,18 @@ app.post('/api/chat', auth, async (req, res) => {
   } catch (e) { res.json({ success: false, reply: '❌ '+e.message }); }
 });
 
+// ====== 对话式库存操作（多轮上下文+指代解析+真实执行）======
+const { processMessage } = require('./lib/chat-ops');
+app.post('/api/chat/ops', auth, async (req, res) => {
+  try {
+    const { session_id, message } = req.body;
+    if (!message) return res.json({ success: false, error: '请输入消息' });
+    const sid = session_id || req.user.username;
+    const result = await processMessage(sid, message, req.user.displayName);
+    res.json({ success: true, ...result });
+  } catch (e) { res.json({ success: false, error: e.message }); }
+});
+
 // ====== 启动 ======
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`🚀 SOM07/SOM08 进出库管理系统运行在 http://0.0.0.0:${PORT}`);
