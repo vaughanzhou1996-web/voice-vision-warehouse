@@ -1,0 +1,66 @@
+[
+  {
+    "ship": "远洋01",
+    "project_no": "YY01",
+    "milestone": "船体合拢",
+    "planned_date": "2026-05-15",
+    "status": "已完成",
+    "related_categories": ["阀门类", "密封件"]
+  },
+  {
+    "ship": "远洋01",
+    "project_no": "YY01",
+    "milestone": "管路系统安装",
+    "planned_date": "2026-06-20",
+    "status": "已完成",
+    "related_categories": ["阀门类", "泵配件", "密封件"]
+  },
+  {
+    "ship": "远洋01",
+    "project_no": "YY01",
+    "milestone": "舾装收尾",
+    "planned_date": "2026-07-10",
+    "status": "已完成",
+    "related_categories": ["电气件", "泵配件"]
+  },
+  {
+    "ship": "远洋01",
+    "project_no": "YY01",
+    "milestone": "系泊试验",
+    "planned_date": "2026-08-10",
+    "status": "进行中",
+    "related_categories": ["阀门类", "泵配件"]
+  },
+  {
+    "ship": "远洋01",
+    "project_no": "YY01",
+    "milestone": "航行试验",
+    "planned_date": "2026-09-20",
+    "status": "未开始",
+    "related_categories": ["阀门类", "泵配件", "电气件"]
+  },
+  {
+    "ship": "远洋02",
+    "project_no": "YY02",
+    "milestone": "开工下料",
+    "planned_date": "2026-06-01",
+    "status": "已完成",
+    "related_categories": []
+  },
+  {
+    "ship": "远洋02",
+    "project_no": "YY02",
+    "milestone": "分段制造",
+    "planned_date": "2026-08-15",
+    "status": "进行中",
+    "related_categories": ["阀门类", "密封件"]
+  },
+  {
+    "ship": "远洋02",
+    "project_no": "YY02",
+    "milestone": "船台合拢",
+    "planned_date": "2026-11-01",
+    "status": "未开始",
+    "related_categories": ["阀门类", "泵配件", "密封件", "牺牲阳极"]
+  }
+]

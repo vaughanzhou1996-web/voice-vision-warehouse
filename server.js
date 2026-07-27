@@ -15,10 +15,8 @@ fs.mkdirSync(DOCS_DIR, { recursive: true });
 const pool = new Pool({ host: '127.0.0.1', port: 5432, database: 'metabase_data', user: 'metabase', password: 'Metabase123!' });
 const upload = multer({ dest: UPLOAD_DIR, limits: { fileSize: 10*1024*1024 } });
 
-// MiniMax LLM 配置
-const MINIMAX_KEY = (fs.readFileSync(path.join(__dirname, '.env'), 'utf8').match(/MINIMAX_API_KEY=(\S+)/) || [])[1] || process.env.MINIMAX_API_KEY;
-const MINIMAX_MODEL = process.env.MINIMAX_MODEL || 'MiniMax-M3';
-const MINIMAX_URL = 'https://api.minimaxi.com/v1/chat/completions';
+// 百炼 Qwen 模型（lib/qwen.js）
+const { chatText, chatVision, speechToText } = require('./lib/qwen');
 
 const app = express();
 app.use(express.static(path.join(__dirname, 'public'), { maxAge: 0 }));
@@ -255,11 +253,11 @@ app.post('/api/recognize', auth, async (req, res) => {
       return validItems.length > 0;
     }
     
-    // MiniMax-M3重试（最多3次）
+    // Qwen视觉识别重试（最多3次）
     let reply = '';
     let info = null;
     for (let attempt = 0; attempt < 3; attempt++) {
-      reply = await callMinimax([
+      reply = await chatVision([
         {role: 'system', text: '提取送货单中的入库信息，只返回JSON格式：\n{"supplier":"供应商名","items":[{"name":"产品名","spec":"规格型号","qty":数量,"unit":"单位"}],"date":"日期"}'},
         {role: 'user', text: '提取信息', image: imgPath}
       ]);
@@ -480,26 +478,15 @@ app.post('/api/rollback', auth, async (req, res) => {
   } catch (e) { res.json({ success: false, error: e.message }); }
 });
 
-// 语音识别（用 MiniMax ASR 接口）
+// 语音识别（百炼 qwen3-asr-flash）
 app.post('/api/speech/recognize', auth, async (req, res) => {
   try {
     const { audio, mimeType } = req.body;
     if (!audio) return res.json({ success: false, error: '缺少音频数据' });
-    const MINIMAX_KEY = (fs.readFileSync(path.join(__dirname, '.env'), 'utf8').match(/MINIMAX_API_KEY=(\S+)/) || [])[1];
-    // 优先尝试 MiniMax speech-02 模型
-    const asrUrl = 'https://api.minimaxi.com/v1/audio/generations';
-    const r = await axios.post(asrUrl, {
-      model: 'speech-02',
-      audio: { data: audio, format: mimeType || 'audio/webm' },
-      language: 'zh'
-    }, {
-      headers: { 'Authorization': 'Bearer ' + MINIMAX_KEY, 'Content-Type': 'application/json' },
-      timeout: 30000
-    });
-    const text = r.data?.text || r.data?.data?.text || '';
+    const text = await speechToText(audio, mimeType || 'audio/webm');
     res.json({ success: true, text });
   } catch (e) {
-    res.json({ success: false, error: e.response?.data?.error?.message || e.message });
+    res.json({ success: false, error: e.message });
   }
 });
 
@@ -528,77 +515,18 @@ app.post('/api/rollback/batch', auth, async (req, res) => {
   } catch (e) { res.json({ success: false, error: e.message }); }
 });
 
-// ====== LLM聊天（HTTP版）======
+// ====== LLM聊天（百炼 qwen3-max-preview）======
 app.post('/api/chat', auth, async (req, res) => {
   try {
     const { message } = req.body;
     if (!message) return res.json({ success: false, reply: '请输入消息' });
-    const reply = await callMinimax([
-      {role: 'system', text: '你是库存管理AI助手。回答简洁专业。说出入库请说"入库 产品名 数量单位"或"出库 产品名 数量单位"。'},
+    const reply = await chatText([
+      {role: 'system', text: '你是库存管理AI助手。回答简洁专业。说出入库请说“入库 产品名 数量单位”或“出库 产品名 数量单位”。'},
       {role: 'user', text: message}
     ]);
     res.json({ success: true, reply });
   } catch (e) { res.json({ success: false, reply: '❌ '+e.message }); }
 });
-
-async function callMinimax(messages, imageMode) {
-  // 识图只用MiniMax-M3，不用abab6.5s-chat（它会编假数据）
-  // 聊天用MiniMax-M3为主，abab6.5s-chat备用
-  const hasImage = messages.some(m => m.image);
-  const models = hasImage ? [MINIMAX_MODEL, MINIMAX_MODEL, 'qwen3.5-plus'] : [MINIMAX_MODEL, 'abab6.5s-chat'];
-  for (const modelName of models) {
-    try {
-      const msgs = [];
-      for (const m of messages) {
-        if (m.image) {
-          const absPath = m.image.startsWith('/uploads/') ? path.join(UPLOAD_DIR, path.basename(m.image)) : m.image;
-          if (!fs.existsSync(absPath)) throw new Error('图片不存在: '+absPath);
-          const b64 = fs.readFileSync(absPath, {encoding: 'base64'});
-          msgs.push({role:'user', content:[{type:'image_url',image_url:{url:'data:image/jpeg;base64,'+b64}},{type:'text',text:m.text}]});
-        } else {
-          msgs.push({role:m.role, content:m.text});
-        }
-      }
-      const GO_KEY = process.env.OPENCODE_GO_API_KEY || (fs.existsSync(path.join(__dirname, '.env')) ? (fs.readFileSync(path.join(__dirname, '.env'), 'utf8').match(/OPENCODE_GO_API_KEY=(\S+)/)||[])[1] : null);
-      const goUrl = 'https://opencode.ai/zen/go/v1/chat/completions';
-      const url = modelName === 'qwen3.5-plus' ? goUrl : MINIMAX_URL;
-      const key = modelName === 'qwen3.5-plus' ? GO_KEY : MINIMAX_KEY;
-      const resp = await axios.post(url, {model:modelName, messages:msgs, max_tokens:65536, temperature:0.1}, {
-        headers:{'Authorization':'Bearer '+key,'Content-Type':'application/json'}, timeout:300000
-      });
-      let content = resp.data.choices?.[0]?.message?.content || '';
-      const finishReason = resp.data.choices?.[0]?.finish_reason;
-      console.log(`[LLM] model=${modelName} finish=${finishReason} len=${content.length} hasImage=${hasImage}`);
-      // 如果MiniMax-M3 abort（token不够），直接跳过换模型
-      if (finishReason === 'abort' && modelName !== models[models.length-1]) { console.log(`[LLM] ${modelName} abort, try next`); continue; }
-      content = content.replace(/<th[\s\S]*?<\/think>/g, '');
-      // 如果think没闭合或内容不以{开头，全文找JSON
-      if (!content.startsWith('{')) {
-        const raw = resp.data.choices?.[0]?.message?.content || '';
-        const s = raw.indexOf('{'), e = raw.lastIndexOf('}');
-        if (s > -1 && e > s) content = raw.substring(s, e+1);
-      }
-      if (!content.trim() && modelName !== models[models.length-1]) { console.log(`[LLM] ${modelName} empty, try next`); continue; }
-      console.log(`[LLM] ✅ ${modelName} success`);
-      content = content
-        .replace(/"供应商"/g, '"supplier"')
-        .replace(/"发货单位"/g, '"supplier"')
-        .replace(/"明细"/g, '"items"')
-        .replace(/"产品"/g, '"items"')
-        .replace(/"产品名称"/g, '"name"')
-        .replace(/"名称"/g, '"name"')
-        .replace(/"规格型号"/g, '"spec"')
-        .replace(/"规格"/g, '"spec"')
-        .replace(/"数量"/g, '"qty"')
-        .replace(/"单位"/g, '"unit"')
-        .replace(/"日期"/g, '"date"');
-      return content;
-    } catch (e) {
-      if (modelName === models[models.length-1]) throw new Error('LLM调用失败: '+(e.response?.data?.error?.message || e.message));
-    }
-  }
-  return '(无回复)';
-}
 
 // ====== 启动 ======
 app.listen(PORT, '0.0.0.0', () => {
