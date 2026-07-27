@@ -180,13 +180,11 @@
 <button class="chat-fab" id="chatFab" onclick="toggleChat()">💬</button>
 <div class="chat-panel" id="chatPanel">
   <div class="chat-header"><span>💬 AI助手</span><button class="chat-close" onclick="toggleChat()">✕</button></div>
-  <div class="chat-messages" id="chatMessages">
-    <div class="msg ai"><div class="msg-bubble">👋 登录成功！<br><br>试试:<br>• "入库 4寸止回阀 3件"<br>• "出库 冷冻油 2桶"<br>• "查库存"<br>• 📷 上传送货单</div></div>
-  </div>
+  <div class="chat-messages" id="chatMessages"></div>
   <div class="chat-input-area">
     <label class="upload-btn">📷<input type="file" accept="image/*" onchange="uploadImage(this)" hidden></label>
     <button class="voice-btn" id="voiceBtn" onclick="startVoice()" title="语音输入">🎤</button>
-    <input type="text" class="chat-input" id="chatInput" placeholder="输入指令..." onkeydown="if(event.key==='Enter')sendMessage()">
+    <textarea class="chat-input" id="chatInput" placeholder="输入指令... 回车发送" rows="1"></textarea>
     <button class="send-btn" onclick="sendMessage()">发送</button>
   </div>
 </div>

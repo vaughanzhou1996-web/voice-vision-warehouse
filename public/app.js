@@ -36,6 +36,9 @@ function selectShip(ship){
   document.getElementById('userName').textContent=displayName;
   updateShipPills();
   loadInventory();loadSuppliers();
+  // 登录简报作为聊天第一条AI消息
+  document.getElementById('chatMessages').innerHTML='';
+  loadBriefing();
 }
 function switchShip(ship){
   if(ship===currentShip)return;
@@ -735,25 +738,80 @@ async function loadOutRecords(){
     <td>${r.department||'-'}</td><td>${r.operator||'-'}</td><td style="font-size:12px;color:#666">${r.remark||'-'}</td></tr>`).join('');
 }
 
-// ====== 聊天 ======
+// ====== 对话式聊天（多轮上下文 + 指代解析 + 真实执行）======
 let chatVisible=false;
+function getSessionId(){
+  let sid=localStorage.getItem('chat_session_id');
+  if(!sid){sid='xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g,c=>{const r=Math.random()*16|0;return(c==='x'?r:(r&0x3|0x8)).toString(16);});localStorage.setItem('chat_session_id',sid);}
+  return sid;
+}
 function toggleChat(){chatVisible=!chatVisible;document.getElementById('chatPanel').classList.toggle('active',chatVisible);document.getElementById('chatFab').style.display=chatVisible?'none':'block';}
-function addMsg(t,r){const m=document.getElementById('chatMessages');const d=document.createElement('div');d.className='msg '+r;d.innerHTML=`<div class="msg-bubble">${t}</div>`;m.appendChild(d);m.scrollTop=m.scrollHeight;}
+function scrollChat(){const m=document.getElementById('chatMessages');m.scrollTop=m.scrollHeight;}
+
+function addUserMsg(text){
+  const m=document.getElementById('chatMessages');
+  const d=document.createElement('div');d.className='msg user';
+  d.innerHTML=`<div class="msg-bubble">${escHtml(text)}</div>`;
+  m.appendChild(d);scrollChat();
+}
+function addAiMsg(html, opts={}){
+  const m=document.getElementById('chatMessages');
+  const d=document.createElement('div');d.className='msg ai';
+  let inner='';
+  if(opts.avatar) inner+=`<div class="msg-avatar">🤖</div>`;
+  inner+=`<div><div class="msg-bubble">${opts.tag?`<div class="briefing-tag">${opts.tag}</div>`:''}${html}</div>`;
+  if(opts.resultCard) inner+=`<div class="result-card${opts.resultCard.warn?' warn':''}">${opts.resultCard.text}</div>`;
+  inner+=`</div>`;
+  d.innerHTML=inner;
+  m.appendChild(d);scrollChat();
+  return d;
+}
+function showThinking(){
+  const m=document.getElementById('chatMessages');
+  const d=document.createElement('div');d.className='msg ai msg-thinking';d.id='thinkingBubble';
+  d.innerHTML=`<div class="msg-avatar">🤖</div><div class="msg-bubble"><span class="thinking-dots"><span></span><span></span><span></span></span> 思考中...</div>`;
+  m.appendChild(d);scrollChat();
+}
+function hideThinking(){const el=document.getElementById('thinkingBubble');if(el)el.remove();}
+function escHtml(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>');}
+// 兼容旧代码的 addMsg
+function addMsg(t,r){if(r==='user')addUserMsg(t);else addAiMsg(t);}
+
 async function sendMessage(){
   const i=document.getElementById('chatInput'),t=i.value.trim();
   if(!t)return;
-  addMsg(t,'user');i.value='';
-  // 检测入库/出库指令
-  const inMatch=t.match(/入库\s+(.+?)\s+(\d+\.?\d*)\s*(件|个|台|套|支|桶|根|公斤|米)?/);
-  const outMatch=t.match(/出库\s+(.+?)\s+(\d+\.?\d*)\s*(件|个|台|套|支|桶|根|公斤|米)?/);
-  if(inMatch){addMsg('📥 打开入库窗口...','ai');showManualInbound({name:inMatch[1].trim(),qty:parseFloat(inMatch[2]),unit:inMatch[3]||'个'});return;}
-  if(outMatch){const n=outMatch[1].trim(),q=parseFloat(outMatch[2]),u=outMatch[3]||'个';window._pendingNL={type:'outbound',name:n,qty:q,unit:u};addMsg(`📋 确认出库: **${n}** × ${q}${u}`,'ai');showModal('nlConfirmModal');document.getElementById('nlConfirmBody').innerHTML=`<div style="text-align:center;padding:16px"><div style="font-size:28px">📤</div><div style="font-size:18px;font-weight:600">确认出库</div><div style="font-size:15px;color:#555">${n} × ${q}${u}</div></div>`;document.getElementById('nlConfirmBtn').textContent='✅ 确认出库';return;}
-  // 其他消息调LLM
-  addMsg('🤔 处理中...','ai');
-  const j=await(await fetch('api/chat',{method:'POST',headers:getHeaders(),body:JSON.stringify({message:t})})).json();
-  const msgs=document.getElementById('chatMessages');const last=msgs.lastElementChild;
-  if(last)last.remove();
-  addMsg(j.reply||'❌ 无回复','ai');
+  addUserMsg(t);i.value='';i.style.height='auto';
+  // 图片上传指令保留
+  showThinking();
+  try{
+    const j=await(await fetch('api/chat/ops',{method:'POST',headers:getHeaders(),body:JSON.stringify({session_id:getSessionId(),message:t})})).json();
+    hideThinking();
+    if(!j.success){addAiMsg(escHtml(j.error||'操作失败'));return;}
+    // 显示AI回复
+    const card = j.executed ? {text:`✅ 已${j.action==='outbound'?'出库':'入库'} ×${j.qty||''}，剩余库存 ${j.stock_after}`} :
+                 (j.action==='outbound'||j.action==='inbound') && !j.executed && j.reply.includes('不足') ? {text:'⚠️ 库存不足，操作被拒绝',warn:true} : null;
+    addAiMsg(escHtml(j.reply||''), {avatar:true, resultCard:card});
+  }catch(e){hideThinking();addAiMsg('❌ 连接失败，请重试');}
+}
+
+// 回车发送，shift+回车换行
+document.addEventListener('DOMContentLoaded',function(){
+  const ta=document.getElementById('chatInput');
+  if(!ta)return;
+  ta.addEventListener('keydown',function(e){
+    if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendMessage();}
+  });
+  ta.addEventListener('input',function(){this.style.height='auto';this.style.height=Math.min(this.scrollHeight,80)+'px';});
+});
+
+// 登录后加载简报
+async function loadBriefing(){
+  try{
+    const j=await(await fetch('api/briefing',{headers:getHeaders()})).json();
+    if(j.success&&j.data&&j.data.briefing){
+      addAiMsg(escHtml(j.data.briefing),{avatar:true,tag:'📋 简报'});
+    }
+  }catch(e){console.log('briefing failed:',e);}
 }
 async function uploadImage(i){const f=i.files[0];if(!f)return;
   addMsg('📷 [上传: '+f.name+']','user');
@@ -771,8 +829,6 @@ async function uploadImage(i){const f=i.files[0];if(!f)return;
   }catch(e){addMsg('❌ 连接超时，请重试或手工录入','ai');}
   i.value='';
 }
-
-// ====== 聊天 ======
 
 // ====== 自动匹配（手工入库）======
 document.addEventListener('input',function(e){

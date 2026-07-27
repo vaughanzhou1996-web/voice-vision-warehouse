@@ -12,7 +12,15 @@ const DOCS_DIR = path.join(__dirname, 'docs');
 fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 fs.mkdirSync(DOCS_DIR, { recursive: true });
 
-const pool = new Pool({ host: '127.0.0.1', port: 5432, database: 'metabase_data', user: 'metabase', password: 'Metabase123!' });
+// 数据库连接：优先读 .env 的 DATABASE_URL，默认本地演示库
+let DATABASE_URL = 'postgres://localhost:5432/inventory_demo';
+try {
+  const _env = fs.readFileSync(path.join(__dirname, '.env'), 'utf8');
+  const _m = _env.match(/DATABASE_URL=(\S+)/);
+  if (_m) DATABASE_URL = _m[1];
+} catch (e) {}
+if (process.env.DATABASE_URL) DATABASE_URL = process.env.DATABASE_URL;
+const pool = new Pool({ connectionString: DATABASE_URL });
 const upload = multer({ dest: UPLOAD_DIR, limits: { fileSize: 10*1024*1024 } });
 
 // 百炼 Qwen 模型（lib/qwen.js）
@@ -36,7 +44,9 @@ const tokens = {}; // token -> {username, displayName, role}
 app.post('/api/login', async (req, res) => {
   const { username, password } = req.body;
   try {
-    const r = await pool.query('SELECT * FROM users WHERE username=$1 AND password=$2', [username, password]);
+    // 兼容明文与 SHA-256 哈希密码
+    const hash = crypto.createHash('sha256').update(password || '').digest('hex');
+    const r = await pool.query('SELECT * FROM users WHERE username=$1 AND (password=$2 OR password=$3)', [username, password, hash]);
     if (r.rows.length === 0) return res.json({ success: false, error: '用户名或密码错误' });
     const u = r.rows[0];
     const token = crypto.randomBytes(16).toString('hex');
@@ -72,8 +82,8 @@ function auth(req, res, next) {
   next();
 }
 
-// 船号白名单（SOM07/SOM08），默认 SOM07
-function getShip(req) { return req.query.ship === 'SOM08' ? 'SOM08' : 'SOM07'; }
+// 船号白名单（YY01/YY02），默认 YY01
+function getShip(req) { return req.query.ship === 'YY02' ? 'YY02' : 'YY01'; }
 
 // ====== 记录变更日志 ======
 async function logChange(actionType, productId, productName, productSpec, quantity, qtyBefore, qtyAfter, operator, details, refTable, refId) {
@@ -350,7 +360,7 @@ app.get('/api/suppliers', auth, async (req, res) => {
 app.post('/api/products', auth, async (req, res) => {
   try {
     const {name, spec, unit, supplier_id} = req.body;
-    const projectNo = req.body.project_no === 'SOM08' ? 'SOM08' : 'SOM07';
+    const projectNo = req.body.project_no === 'YY02' ? 'YY02' : 'YY01';
     const r = await pool.query('INSERT INTO products (name,spec,unit,supplier_id,project_no) VALUES ($1,$2,$3,$4,$5) RETURNING *', [name, spec||'', unit||'个', supplier_id||null, projectNo]);
     res.json({ success: true, data: r.rows[0] });
   } catch (e) { res.json({ success: false, error: e.message }); }
@@ -448,7 +458,7 @@ app.get('/api/ships/stats', auth, async (req, res) => {
       FROM products p
       LEFT JOIN (SELECT product_id,SUM(quantity) t FROM inbound_records GROUP BY product_id) inb ON p.id=inb.product_id
       LEFT JOIN (SELECT product_id,SUM(quantity) t FROM outbound_records GROUP BY product_id) outb ON p.id=outb.product_id
-      WHERE p.project_no IN ('SOM07','SOM08')
+      WHERE p.project_no IN ('YY01','YY02')
       GROUP BY p.project_no`);
     res.json({ success: true, data: r.rows });
   } catch (e) { res.json({ success: false, error: e.message }); }
@@ -540,7 +550,100 @@ app.post('/api/chat/ops', auth, async (req, res) => {
   } catch (e) { res.json({ success: false, error: e.message }); }
 });
 
+// ====== 角色化登录简报 ======
+app.get('/api/briefing', auth, async (req, res) => {
+  try {
+    const user = req.user;
+    let snapshot = '';
+    let prompt = '';
+
+    if (user.role === 'admin') {
+      // 库存管理员：库存告急 + 近3天动态
+      const low = await pool.query(`
+        SELECT p.name,p.spec,COALESCE(inb.t,0)-COALESCE(outb.t,0) AS stock
+        FROM products p
+        LEFT JOIN (SELECT product_id,SUM(quantity) t FROM inbound_records GROUP BY product_id) inb ON p.id=inb.product_id
+        LEFT JOIN (SELECT product_id,SUM(quantity) t FROM outbound_records GROUP BY product_id) outb ON p.id=outb.product_id
+        WHERE COALESCE(inb.t,0)-COALESCE(outb.t,0) < 3 ORDER BY stock ASC LIMIT 10`);
+      const recent = await pool.query(`
+        SELECT action_type,product_name,quantity,operator,created_at FROM change_log
+        WHERE action_type IN ('inbound','outbound') AND created_at >= NOW() - INTERVAL '3 days'
+        ORDER BY created_at DESC LIMIT 15`);
+      snapshot = `【库存告急（库存<3）】共${low.rows.length}项：\n` + low.rows.map(r => `${r.name}(${r.spec||'无规格'}) 库存${r.stock}`).join('；') +
+        `\n【近3天出入库动态】共${recent.rows.length}条：\n` + recent.rows.map(r => `${r.action_type==='inbound'?'入库':'出库'} ${r.product_name}×${r.quantity} 操作人:${r.operator}`).join('；');
+      prompt = `你是库存管理AI助手。请根据以下数据为库存管理员「${user.displayName}」生成今日工作简报，150字以内，口语化，开头用"${user.displayName}，"。重点提醒告急物料和近期动态。`;
+
+    } else if (user.role === 'leader') {
+      // 队长：项目风险视角
+      const planData = JSON.parse(fs.readFileSync(path.join(__dirname, 'data', 'project-plan.json'), 'utf8'));
+      const now = new Date();
+      const upcoming = planData.filter(m => {
+        const d = new Date(m.planned_date);
+        const diff = (d - now) / 86400000;
+        return diff >= 0 && diff <= 30;
+      });
+      let riskInfo = '';
+      for (const m of upcoming) {
+        const cats = m.related_categories || [];
+        if (!cats.length) continue;
+        const catFilter = cats.map((c, i) => `p.name ILIKE $${i + 1} OR p.spec ILIKE $${i + 1}`).join(' OR ');
+        const params = cats.map(c => '%' + c.replace('类', '') + '%');
+        const items = await pool.query(`
+          SELECT p.name,p.spec,COALESCE(inb.t,0)-COALESCE(outb.t,0) AS stock
+          FROM products p
+          LEFT JOIN (SELECT product_id,SUM(quantity) t FROM inbound_records GROUP BY product_id) inb ON p.id=inb.product_id
+          LEFT JOIN (SELECT product_id,SUM(quantity) t FROM outbound_records GROUP BY product_id) outb ON p.id=outb.product_id
+          WHERE (${catFilter}) AND COALESCE(inb.t,0)-COALESCE(outb.t,0) < 5 ORDER BY stock ASC LIMIT 5`, params);
+        if (items.rows.length) {
+          riskInfo += `\n「${m.milestone}」(${m.planned_date},${m.ship})关联类别[${cats.join('/')}]低库存：` +
+            items.rows.map(r => `${r.name}(${r.spec||''})库存${r.stock}`).join('、');
+        }
+      }
+      snapshot = `【30天内项目节点】\n` + upcoming.map(m => `${m.ship}-${m.milestone} ${m.planned_date} [${m.status}] 关联:${(m.related_categories||[]).join('/')}`).join('\n') +
+        (riskInfo ? `\n【风险项】${riskInfo}` : '\n【风险项】暂无明显风险');
+      prompt = `你是项目管理AI助手。请根据以下数据为队长「${user.displayName}」生成项目风险简报，150字以内，口语化，开头用"${user.displayName}，"。重点指出哪些节点临近但相关备件库存不足。`;
+
+    } else {
+      // 分析员（analyst 及其他角色）：呆滞TOP5 + 本月出入库对比
+      const stagnant = await pool.query(`
+        SELECT p.name,p.spec,COALESCE(inb.t,0)-COALESCE(outb.t,0) AS stock,
+          MAX(o.created_at) AS last_out
+        FROM products p
+        LEFT JOIN (SELECT product_id,SUM(quantity) t FROM inbound_records GROUP BY product_id) inb ON p.id=inb.product_id
+        LEFT JOIN (SELECT product_id,SUM(quantity) t FROM outbound_records GROUP BY product_id) outb ON p.id=outb.product_id
+        LEFT JOIN outbound_records o ON o.product_id=p.id
+        WHERE COALESCE(inb.t,0)-COALESCE(outb.t,0) > 0
+        GROUP BY p.id,p.name,p.spec,inb.t,outb.t
+        HAVING MAX(o.created_at) < NOW() - INTERVAL '30 days' OR MAX(o.created_at) IS NULL
+        ORDER BY stock DESC LIMIT 5`);
+      const monthly = await pool.query(`
+        SELECT
+          COALESCE((SELECT SUM(quantity) FROM inbound_records WHERE created_at >= date_trunc('month',NOW())),0) AS month_in,
+          COALESCE((SELECT SUM(quantity) FROM outbound_records WHERE created_at >= date_trunc('month',NOW())),0) AS month_out`);
+      const mi = monthly.rows[0];
+      snapshot = `【呆滞物料TOP5（30天未出库）】\n` + stagnant.rows.map((r, i) => `${i + 1}.${r.name}(${r.spec||''}) 库存${r.stock} 最后出库:${r.last_out ? new Date(r.last_out).toLocaleDateString('zh-CN') : '从未'}`).join('\n') +
+        `\n【本月出入库对比】入库${mi.month_in}件 / 出库${mi.month_out}件`;
+      prompt = `你是数据分析AI助手。请根据以下数据为分析员「${user.displayName}」生成数据简报，150字以内，口语化，开头用"${user.displayName}，"。点评呆滞情况和出入库趋势。`;
+    }
+
+    // 调用 LLM 生成自然语言简报，失败则降级
+    let briefing;
+    try {
+      briefing = await chatText([
+        { role: 'system', text: prompt + '\n数据如下：\n' + snapshot },
+        { role: 'user', text: '请生成简报' }
+      ], { temperature: 0.7, max_tokens: 300 });
+    } catch (e) {
+      console.log('[Briefing] LLM失败，降级为纯数据:', e.message);
+      briefing = snapshot;
+    }
+    res.json({ success: true, data: { briefing, role: user.role, displayName: user.displayName } });
+  } catch (e) {
+    res.json({ success: false, error: e.message });
+  }
+});
+
 // ====== 启动 ======
 app.listen(PORT, '0.0.0.0', () => {
-  console.log(`🚀 SOM07/SOM08 进出库管理系统运行在 http://0.0.0.0:${PORT}`);
+  console.log(`🚀 远洋01/远洋02 进出库管理系统运行在 http://0.0.0.0:${PORT}`);
 });
