@@ -1,0 +1,156 @@
+[
+  {
+    "date": "2026-08-05",
+    "ship": "YY01",
+    "milestone": "分段制造",
+    "equipment": "管路预制系统",
+    "required_parts": [
+      { "name": "截止阀", "spec": "GB/T587 DN50 PN16", "qty": 2 },
+      { "name": "氟橡胶垫片", "spec": "DN50 PN16 耐油", "qty": 4 },
+      { "name": "闸阀", "spec": "GB/T12232 DN65 PN16", "qty": 2 }
+    ]
+  },
+  {
+    "date": "2026-08-08",
+    "ship": "YY01",
+    "milestone": "管系安装",
+    "equipment": "海水冷却循环系统",
+    "required_parts": [
+      { "name": "泵用机械密封", "spec": "104-25 碳化硅/碳", "qty": 3 },
+      { "name": "止回阀", "spec": "H44H-16C DN50", "qty": 3 },
+      { "name": "O型密封圈", "spec": "NBR φ50×3.5", "qty": 4 }
+    ]
+  },
+  {
+    "date": "2026-08-10",
+    "ship": "YY01",
+    "milestone": "系泊试验",
+    "equipment": "主机遥控配电系统",
+    "required_parts": [
+      { "name": "船用断路器", "spec": "DZ47-63 C32 2P", "qty": 4 },
+      { "name": "接线端子排", "spec": "UK-10N 导轨式", "qty": 5 },
+      { "name": "交流接触器", "spec": "CJX2-2510 220V", "qty": 2 }
+    ]
+  },
+  {
+    "date": "2026-08-12",
+    "ship": "YY01",
+    "milestone": "系泊试验",
+    "equipment": "燃油供给系统",
+    "required_parts": [
+      { "name": "球阀", "spec": "Q41F-16C DN25", "qty": 3 },
+      { "name": "氟橡胶垫片", "spec": "DN50 PN16 耐油", "qty": 2 },
+      { "name": "安全阀", "spec": "A48Y-16C DN50×80", "qty": 2 }
+    ]
+  },
+  {
+    "date": "2026-08-15",
+    "ship": "YY01",
+    "milestone": "系泊试验",
+    "equipment": "主机遥控管路系统",
+    "required_parts": [
+      { "name": "截止阀", "spec": "GB/T587 DN50 PN16", "qty": 3 },
+      { "name": "截止阀", "spec": "GB/T587 DN80 PN16", "qty": 2 },
+      { "name": "交流接触器", "spec": "CJX2-2510 220V", "qty": 2 }
+    ]
+  },
+  {
+    "date": "2026-08-20",
+    "ship": "YY02",
+    "milestone": "分段制造",
+    "equipment": "压载管路预制",
+    "required_parts": [
+      { "name": "蝶阀", "spec": "D71X-16 DN200", "qty": 3 },
+      { "name": "O型密封圈", "spec": "NBR φ50×3.5", "qty": 4 },
+      { "name": "铝合金阳极块", "spec": "AL-15 压载舱用", "qty": 3 }
+    ]
+  },
+  {
+    "date": "2026-08-25",
+    "ship": "YY01",
+    "milestone": "航行试验",
+    "equipment": "导航配电系统",
+    "required_parts": [
+      { "name": "船用断路器", "spec": "DZ47-63 C32 2P", "qty": 2 },
+      { "name": "船用断路器", "spec": "DZ47-63 C63 3P", "qty": 2 },
+      { "name": "接线端子排", "spec": "UK-10N 导轨式", "qty": 3 }
+    ]
+  },
+  {
+    "date": "2026-08-28",
+    "ship": "YY02",
+    "milestone": "管系安装",
+    "equipment": "消防管路系统",
+    "required_parts": [
+      { "name": "蝶阀", "spec": "D71X-16 DN200", "qty": 2 },
+      { "name": "止回阀", "spec": "H44H-16C DN80", "qty": 2 },
+      { "name": "船用电缆", "spec": "CEF80/DA 3×16mm²", "qty": 5 }
+    ]
+  },
+  {
+    "date": "2026-09-01",
+    "ship": "YY01",
+    "milestone": "航行试验",
+    "equipment": "压载泵组系统",
+    "required_parts": [
+      { "name": "泵用机械密封", "spec": "104-25 碳化硅/碳", "qty": 2 },
+      { "name": "止回阀", "spec": "H44H-16C DN50", "qty": 2 },
+      { "name": "闸阀", "spec": "GB/T12232 DN100 PN16", "qty": 2 }
+    ]
+  },
+  {
+    "date": "2026-09-05",
+    "ship": "YY02",
+    "milestone": "系泊试验",
+    "equipment": "机舱监控系统",
+    "required_parts": [
+      { "name": "船用指示灯", "spec": "AD16-22 绿色 24V", "qty": 4 },
+      { "name": "船用按钮", "spec": "LA38-11 红色 自复位", "qty": 4 },
+      { "name": "防水接线盒", "spec": "F10 铸铝 IP66", "qty": 3 }
+    ]
+  },
+  {
+    "date": "2026-09-10",
+    "ship": "YY01",
+    "milestone": "交船准备",
+    "equipment": "消防管路终验",
+    "required_parts": [
+      { "name": "球阀", "spec": "Q41F-16C DN25", "qty": 2 },
+      { "name": "安全阀", "spec": "A48Y-16C DN50×80", "qty": 2 },
+      { "name": "应急照明灯", "spec": "YD-2 双头 LED 船用", "qty": 3 }
+    ]
+  },
+  {
+    "date": "2026-09-15",
+    "ship": "YY02",
+    "milestone": "航行试验",
+    "equipment": "海水泵组系统",
+    "required_parts": [
+      { "name": "海水泵叶轮", "spec": "CWZ-65 铝青铜", "qty": 2 },
+      { "name": "泵用机械密封", "spec": "109-35 硬质合金", "qty": 2 },
+      { "name": "O型密封圈", "spec": "NBR φ50×3.5", "qty": 3 }
+    ]
+  },
+  {
+    "date": "2026-09-20",
+    "ship": "YY01",
+    "milestone": "交船准备",
+    "equipment": "阳极保护终装",
+    "required_parts": [
+      { "name": "锌合金阳极块", "spec": "AZ-5 船体用 5kg", "qty": 4 },
+      { "name": "阳极固定螺栓", "spec": "M16×80 316L不锈钢", "qty": 4 },
+      { "name": "轴接地阳极", "spec": "铜轴专用 环形", "qty": 2 }
+    ]
+  },
+  {
+    "date": "2026-09-25",
+    "ship": "YY02",
+    "milestone": "交船准备",
+    "equipment": "配电系统终验",
+    "required_parts": [
+      { "name": "船用配电箱", "spec": "PZ30-24 24回路 IP44", "qty": 2 },
+      { "name": "绝缘胶带", "spec": "PVC 19mm×20m 阻燃", "qty": 3 },
+      { "name": "电缆扎带", "spec": "300mm 尼龙 耐候", "qty": 3 }
+    ]
+  }
+]

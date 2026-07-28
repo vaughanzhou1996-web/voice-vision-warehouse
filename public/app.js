@@ -783,6 +783,23 @@ async function loadAnalysis(){
       html+=`<div style="padding:20px;color:#666;text-align:center">✅ 暂无风险项</div>`;
     }
     html+=`</div>`;
+    // 📈 出库预测区块
+    const forecast = j.data.forecast || [];
+    if(forecast.length){
+      html+=`<div class="analysis-section"><h3>📈 出库预测（未杧60天）</h3>`;
+      html+=`<div class="analysis-table-wrap"><table class="analysis-table"><thead><tr><th>备件</th><th>规格</th><th>当前库存</th><th>计划出库明细</th><th>预测最低</th><th>断料日</th><th>状态</th></tr></thead><tbody>`;
+      forecast.forEach(f=>{
+        const lamp=f.status==='red'?'🔴':(f.status==='yellow'?'🟡':'🟢');
+        const lampText=f.status==='red'?'会断料':(f.status==='yellow'?'低于安全线':'安全');
+        const detail=f.scheduled.map(s=>`${s.date.slice(5)} ${s.milestone}×${s.qty}`).join('<br>');
+        const stStyle=f.status==='red'?'color:#e53935;font-weight:700':(f.status==='yellow'?'color:#e65100':'color:#2e7d32');
+        html+=`<tr><td class="td-nowrap">${f.product}</td><td>${f.spec||'-'}</td><td>${f.current_stock}</td><td style="font-size:11px">${detail}</td><td style="${stStyle}">${f.projected_min}</td><td style="${stStyle}">${f.stockout_date||'-'}</td><td style="${stStyle}">${lamp} ${lampText}</td></tr>`;
+      });
+      html+=`</tbody></table></div>`;
+      // 水位曲线图
+      html+=`<div class="analysis-chart-wrap" style="margin-top:16px"><div id="forecastChart" style="height:340px;min-width:560px;"></div></div>`;
+      html+=`</div>`;
+    }
     container.innerHTML=html;
     // 渲染 ECharts
     if(typeof echarts!=='undefined'){
@@ -800,9 +817,32 @@ async function loadAnalysis(){
         ]
       },true);
     }
+    // 渲染预测水位曲线图
+    if(typeof echarts!=='undefined' && forecast.length){
+      const fcEl=document.getElementById('forecastChart');
+      if(fcEl){
+        if(!_forecastChart)_forecastChart=echarts.init(fcEl);
+        const top5=forecast.filter(f=>f.status==='red').slice(0,5);
+        const chartData=top5.length?top5:forecast.slice(0,5);
+        const series=chartData.map(f=>{
+          const pts=f.waterline.map(w=>[w.date,w.level]);
+          return {name:f.product+(f.spec?' '+f.spec.split(' ')[0]:''),type:'line',step:'end',data:pts,symbol:'circle',symbolSize:6,lineStyle:{width:2}};
+        });
+        _forecastChart.setOption({
+          title:{text:'断料风险 TOP5 库存水位曲线',left:'center',textStyle:{fontSize:13}},
+          tooltip:{trigger:'axis'},
+          legend:{bottom:0,textStyle:{fontSize:10},type:'scroll'},
+          grid:{left:50,right:30,top:40,bottom:50},
+          xAxis:{type:'category',boundaryGap:false,axisLabel:{fontSize:10}},
+          yAxis:{type:'value',name:'库存',min:0},
+          series:[...series,{name:'安全线',type:'line',markLine:{silent:true,symbol:'none',lineStyle:{type:'dashed',color:'#e53935'},data:[{yAxis:3,label:{formatter:'安全线=3',fontSize:10}}]},data:[]}]
+        },true);
+      }
+    }
   }catch(e){container.innerHTML='<div class="loading">❌ 加载失败: '+e.message+'</div>';}
 }
-window.addEventListener('resize',function(){if(_analysisChart)_analysisChart.resize();});
+let _forecastChart=null;
+window.addEventListener('resize',function(){if(_analysisChart)_analysisChart.resize();if(_forecastChart)_forecastChart.resize();});
 
 // ====== 对话式聊天（多轮上下文 + 指代解析 + 真实执行）======
 let chatVisible=false;

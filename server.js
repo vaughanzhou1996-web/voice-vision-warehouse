@@ -796,7 +796,30 @@ app.get('/api/analysis', auth, async (req, res) => {
       return { ...m, risk_status: status, risk_count: mRisks.length };
     });
 
-    res.json({ success: true, data: { milestones: milestonesWithStatus, category_stats, risks, ai_insight } });
+    // 5. 库存趋势预测
+    const { computeForecast, generateForecastInsight } = require('./lib/forecast');
+    let forecast = [];
+    let forecast_insight = '';
+    try {
+      forecast = await computeForecast(pool, null);
+      forecast_insight = await generateForecastInsight(forecast, null);
+    } catch (fe) { console.log('[Analysis] 预测失败降级:', fe.message); }
+
+    // AI洞察合并预测语言
+    const fullInsight = ai_insight + (forecast_insight ? '\n\n【库存趋势预测】\n' + forecast_insight : '');
+
+    res.json({ success: true, data: { milestones: milestonesWithStatus, category_stats, risks, ai_insight: fullInsight, forecast } });
+  } catch (e) { res.json({ success: false, error: e.message }); }
+});
+
+// 库存趋势预测独立接口
+app.get('/api/forecast', auth, async (req, res) => {
+  try {
+    const { computeForecast, generateForecastInsight } = require('./lib/forecast');
+    const ship = req.query.ship || null;
+    const forecast = await computeForecast(pool, ship);
+    const insight = await generateForecastInsight(forecast, ship);
+    res.json({ success: true, data: { forecast, insight } });
   } catch (e) { res.json({ success: false, error: e.message }); }
 });
 
