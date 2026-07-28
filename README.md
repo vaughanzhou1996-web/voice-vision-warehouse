@@ -8,16 +8,17 @@
 
 我是一名国外商学院毕业的留学生，完全不懂代码，到今天都不知道 json 是什么（总有一天我会慢慢知道的：）。我在上海一家船舶建造 EPC 公司协助处理船检文件，对 AI 的兴趣让我尝试把智能体嵌入日常重复工作。我观察到公司仓库管理系统十分老旧——仓库管理员曹姐还在填纸质表格、配合 Excel 统计数据；船舶配件数量繁多、型号复杂，她经常加班核对却依然容易出错。看到这些痛点，我使用 AI 编程工具（Qoder + 通义千问）手搓了这套智能库存管理系统，全部功能由 AI 编程完成，并已在公司真实上线使用。
 
-## 六大 AI 能力
+## 七大 AI 能力
 
 | # | 能力 | 一句话说明 | 模型 |
 |---|------|-----------|------|
 | 1 | 💬 对话式库存操作 | 自然语言查库存、出入库，多轮上下文+指代解析 | qwen3-max-preview |
 | 2 | 📷 拍照识别入库 | 拍送货单→AI 提取品名规格数量→一键批量入库 | qwen-vl-max |
 | 3 | 📊 项目×备件联动分析 | 项目节点×库存交叉推理，风险预警+AI 洞察 | qwen3-max-preview |
-| 4 | 📧 AI 邮件助手 | 对话式起草/修改供应商邮件，沙箱真实收发 | qwen3-max-preview |
-| 5 | 🧾 月末对账 | 对账单拍照→OCR→自动比对→差异报告→追问→生成邮件 | qwen-vl-max + qwen3-max-preview |
-| 6 | 🎤 全语音链路 | 按住说话→ASR→对话引擎→AI回复→TTS播报 | qwen3-asr-flash |
+| 4 | 📈 库存趋势预测 | 建造周期驱动，预测未杧60天库存水位，精确到“哪天断料” | qwen3-max-preview |
+| 5 | 📧 AI 邮件助手 | 对话式起草/修改供应商邮件，沙箱真实收发 | qwen3-max-preview |
+| 6 | 🧾 月末对账 | 对账单拍照→OCR→自动比对→差异报告→追问→生成邮件 | qwen-vl-max + qwen3-max-preview |
+| 7 | 🎤 全语音链路 | 按住说话→ASR→对话引擎→AI回复→TTS播报 | qwen3-asr-flash |
 
 ## 技术栈
 
@@ -62,6 +63,7 @@ npm start
 ├── lib/                  # 核心引擎
 │   ├── qwen.js           # 通义千问统一调用层
 │   ├── chat-ops.js       # 对话式库存操作引擎
+│   ├── forecast.js       # 库存趋势预测引擎
 │   ├── mail-assistant.js # AI 邮件起草引擎
 │   ├── mail-transport.js # 真实 SMTP/IMAP 通道（白名单硬校验）
 │   └── reconcile.js      # 月末对账引擎
@@ -76,6 +78,7 @@ npm start
 ├── data/                 # 配置文件
 │   ├── ships.json        # 船名映射
 │   ├── project-plan.json # 项目节点计划
+│   ├── build-schedule.json # 建造周期表（预测用）
 │   └── mailbox-seed.json # 虚构邮件线程
 ├── server.js             # Express 主服务
 └── .env.example          # 环境变量模板
