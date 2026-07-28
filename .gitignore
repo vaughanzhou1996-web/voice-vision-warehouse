@@ -3,3 +3,7 @@ node_modules/
 uploads/
 test-*.png
 data/sent-box.json
+
+# 内部运营文档（不进公开仓库）
+HACKATHON.md
+docs/SUBMISSION.md

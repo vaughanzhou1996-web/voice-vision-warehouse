@@ -1,5 +1,5 @@
 // scripts/reset-demo.js — 演示数据一键还原（清空全部表 + 重新播种）
-// 用途：演示日/提交前恢复出厂数据；评审 clone 后想重置也可用
+// 用途：一键恢复演示数据到初始状态（clone 试用后可随时重置）
 // 用法：node scripts/reset-demo.js
 const { execSync } = require('child_process');
 const fs = require('fs');
