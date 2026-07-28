@@ -54,6 +54,29 @@ if (fs.existsSync(envPath)) {
       console.log(`✅ ${r.rows[0].name} ${r.rows[0].spec}: 库存 ${cur} ≥ ${h.min}，无需补录`);
     }
   }
+  // 2.6 黄档锚点钉值：预测表格必须有三档灯全色展示（评审视角）
+  // 轴接地阳极计划出库20，钉到21 → 预测最低1 ∈ [0,3) → 稳定黄灯
+  console.log('\n--- 黄档锚点钉值 ---');
+  const PINS = [
+    { like: '%轴接地阳极%', spec: '%', target: 21 },
+  ];
+  for (const pin of PINS) {
+    const r = await guard.query(`SELECT p.id, p.name, p.spec,
+      COALESCE((SELECT SUM(quantity) FROM inbound_records WHERE product_id=p.id),0)
+      - COALESCE((SELECT SUM(quantity) FROM outbound_records WHERE product_id=p.id),0) AS stock
+      FROM products p WHERE p.name LIKE $1 AND p.spec LIKE $2 LIMIT 1`, [pin.like, pin.spec]);
+    if (!r.rows[0]) { console.log(`⚠️ 未找到 ${pin.like}`); continue; }
+    const cur = parseFloat(r.rows[0].stock);
+    const diff = pin.target - cur;
+    if (diff > 0) {
+      await guard.query('INSERT INTO inbound_records (product_id, quantity, remark) VALUES ($1,$2,$3)',
+        [r.rows[0].id, diff, '黄档锚点钉值']);
+    } else if (diff < 0) {
+      await guard.query('INSERT INTO outbound_records (product_id, quantity, remark) VALUES ($1,$2,$3)',
+        [r.rows[0].id, -diff, '黄档锚点钉值']);
+    }
+    console.log(`✅ ${r.rows[0].name}: ${cur} → ${pin.target}（黄档锚点）`);
+  }
   await guard.end();
 
   // 3. 验证关键数字
