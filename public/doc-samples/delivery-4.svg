@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="595" height="420" viewBox="0 0 595 420">
+<rect width="595" height="420" fill="#fffef5"/>
+<text x="297" y="35" text-anchor="middle" font-size="18" font-weight="bold" font-family="SimSun,serif">送 货 单</text>
+<text x="30" y="65" font-size="11" font-family="SimSun,serif">供应商：沪东泵业</text>
+<text x="350" y="65" font-size="11" font-family="SimSun,serif">单号：SH-2026-0718</text>
+<text x="30" y="85" font-size="11" font-family="SimSun,serif">收货单位：远洋船厂物资部</text>
+<text x="350" y="85" font-size="11" font-family="SimSun,serif">日期：2026-07-18</text>
+<line x1="30" y1="95" x2="565" y2="95" stroke="#333" stroke-width="1"/>
+<table xmlns="http://www.w3.org/1999/xhtml" style="width:100%;border-collapse:collapse;font-size:11px;font-family:SimSun,serif">
+<tr><th style="border:1px solid #333;padding:4px 8px;background:#eee">序号</th><th style="border:1px solid #333;padding:4px 8px;background:#eee">品名</th><th style="border:1px solid #333;padding:4px 8px;background:#eee">规格型号</th><th style="border:1px solid #333;padding:4px 8px;background:#eee">数量</th></tr>
+<tr><td style="border:1px solid #333;padding:4px 8px">1</td><td style="border:1px solid #333;padding:4px 8px">泵用机械密封</td><td style="border:1px solid #333;padding:4px 8px">104-25 碳化硅/碳</td><td style="border:1px solid #333;padding:4px 8px;text-align:right">5</td></tr><tr><td style="border:1px solid #333;padding:4px 8px">2</td><td style="border:1px solid #333;padding:4px 8px">海水泵叶轮</td><td style="border:1px solid #333;padding:4px 8px">CWZ-65 铝青铜</td><td style="border:1px solid #333;padding:4px 8px;text-align:right">2</td></tr>
+</table>
+<text x="30" y="380" font-size="10" font-family="SimSun,serif">送货人（签字）：________</text>
+<text x="350" y="380" font-size="10" font-family="SimSun,serif">验收人（签字）：________</text>
+<text x="297" y="410" text-anchor="middle" font-size="9" fill="#999" font-family="sans-serif">【虚构演示单据 - 远洋库存管家】</text>
+</svg>

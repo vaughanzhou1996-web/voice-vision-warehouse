@@ -86,6 +86,19 @@ function hideModal(id){
   }
   document.getElementById(id).classList.remove('active');
 }
+// ESC 关闭所有弹窗
+document.addEventListener('keydown',function(e){
+  if(e.key==='Escape'){
+    const overlays=document.querySelectorAll('.modal-overlay.active');
+    if(overlays.length){
+      const top=overlays[overlays.length-1];
+      if(top.id==='aiConfirmModal'){minimizeAiModal();}
+      else top.classList.remove('active');
+    }
+  }
+});
+function fmtInt(v){const n=parseFloat(v);return isNaN(n)?v:(Number.isInteger(n)?n:Math.round(n));}
+function imgFallback(el){el.onerror=null;el.style.display='none';const d=document.createElement('div');d.style.cssText='padding:20px;text-align:center;color:#999;background:#f5f5f5;border-radius:6px;font-size:12px';d.textContent='🖼️ 图片缺失';el.parentNode.insertBefore(d,el.nextSibling);}
 function minimizeAiModal(){
   const modal = document.getElementById('aiConfirmModal');
   modal.classList.add('minimized');
@@ -163,11 +176,12 @@ async function loadInventory(){
   if(sid || keyword){
     // 按供应商过滤或搜索时，平铺显示
     document.getElementById('expandAllBtn').style.display='none';
-    if(!filtered.length){tbody.innerHTML='<tr><td colspan="10" class="loading">📭 暂无数据</td></tr>';return;}
+    if(!filtered.length){tbody.innerHTML='<tr><td colspan="11" class="loading">📭 暂无数据</td></tr>';return;}
     tbody.innerHTML=filtered.map(r=>{
       const s=r.stock;const st=s<5?'color:#e53935;font-weight:700':(s<20?'color:#e65100':'');
       return `<tr><td>${r.supplier_name||'-'}</td><td><strong>${r.name}</strong></td><td>${r.spec||'-'}</td>
-        <td>${r.unit}</td><td>${r.total_in}</td><td>${r.total_out}</td><td style="${st}">${s}</td>
+        <td>${r.unit}</td><td>${fmtInt(r.total_in)}</td><td>${fmtInt(r.total_out)}</td><td style="${st}">${fmtInt(s)}</td>
+        <td><button class="btn btn-sm btn-outline" onclick="openNotes(${r.id},'${r.name}')" title="备注">📝</button></td>
         <td><button class="btn btn-sm btn-outline" onclick="viewProduct(${r.id})">📄</button></td>
         <td><button class="btn btn-sm btn-danger" onclick="openOut(${r.id},'${r.name}')">出库</button></td></tr>`;
     }).join('');
@@ -189,14 +203,15 @@ async function loadInventory(){
       const totalStock=items.reduce((a,b)=>a+parseFloat(b.stock||0),0);
       const expanded=window._expandedSuppliers[sn];
       html+=`<tr class="supplier-row" onclick="toggleSupplier('${sn}')" style="cursor:pointer;background:#f8f9fa;font-weight:600">
-        <td colspan="9"><span style="margin-right:8px">${expanded?'📂▼':'📁▶'}</span>${sn} <span style="font-weight:400;color:#888;font-size:12px">(${items.length}项 · 库存${totalStock})</span></td></tr>`;
+        <td colspan="11"><span style="margin-right:8px">${expanded?'📂▼':'📁▶'}</span>${sn} <span style="font-weight:400;color:#888;font-size:12px">(${items.length}项 · 库存${fmtInt(totalStock)})</span></td></tr>`;
       if(expanded){
         items.forEach(r=>{
           const s=r.stock;const st=s<5?'color:#e53935;font-weight:700':(s<20?'color:#e65100':'');
           const cb=batchMode?`<td><input type="checkbox" class="batch-check" value="${r.id}" data-name="${r.name}"></td>`:'';
           const rowCls=batchMode?' class="batch-row" style="cursor:pointer"':'';
           html+=`<tr${rowCls}>${cb}<td></td><td><strong>${r.name}</strong></td><td>${r.spec||'-'}</td><td>${r.unit}</td>
-            <td>${r.total_in}</td><td>${r.total_out}</td><td style="${st}">${s}</td>
+            <td>${fmtInt(r.total_in)}</td><td>${fmtInt(r.total_out)}</td><td style="${st}">${fmtInt(s)}</td>
+            <td><button class="btn btn-sm btn-outline" onclick="event.stopPropagation();openNotes(${r.id},'${r.name}')" title="备注">📝</button></td>
             <td><button class="btn btn-sm btn-outline" onclick="event.stopPropagation();viewProduct(${r.id})">📄</button></td>
             <td><button class="btn btn-sm btn-danger" onclick="event.stopPropagation();openOut(${r.id},'${r.name}')">出库</button></td></tr>`;
         });
@@ -391,12 +406,93 @@ async function viewProduct(pid){
         <div style="display:flex;justify-content:space-between;align-items:center">
           <span>${r.doc_ref||'入库单'} | ${r.quantity}件 | ${r.date}</span>
         </div>`;
-      if(r.doc_image_path)h+=`<img src="${r.doc_image_path}" style="max-width:100%;max-height:200px;border-radius:6px;margin-top:6px;cursor:pointer" onclick="window.open(this.src)">`;
+      if(r.doc_image_path)h+=`<img src="${r.doc_image_path}" style="max-width:100%;max-height:200px;border-radius:6px;margin-top:6px;cursor:pointer" onclick="window.open(this.src)" onerror="imgFallback(this)">`;
       h+=`</div>`;
     });
     if(!ir.data.inbound.some(r=>r.doc_ref||r.doc_type||r.doc_image_path))h+='<div class="doc-empty">无关联单据</div>';
   }else h+='<div class="doc-empty">无关联单据</div>';
   document.getElementById('docBody').innerHTML=h;
+}
+
+// ====== 产品备注 ======
+let _notesProductId=null;
+async function openNotes(pid, name){
+  _notesProductId=pid;
+  document.getElementById('notesProductName').textContent=name||'';
+  document.getElementById('noteInput').value='';
+  document.getElementById('noteQty').value='';
+  showModal('notesModal');
+  await loadNotesList();
+}
+async function loadNotesList(){
+  const j=await(await fetch(`api/notes/${_notesProductId}`,{headers:getHeaders()})).json();
+  const listEl=document.getElementById('notesList');
+  const summaryEl=document.getElementById('notesQtySummary');
+  if(!j.success){listEl.innerHTML='<div style="color:#e53935">加载失败</div>';return;}
+  // 累计估算
+  if(j.total_qty>0){
+    summaryEl.style.display='block';
+    summaryEl.textContent=`📊 累计登记领用 ≈ ${fmtInt(j.total_qty)} 个（仅供参考，不影响库存账）`;
+  }else{summaryEl.style.display='none';}
+  if(!j.data.length){listEl.innerHTML='<div style="text-align:center;color:#999;padding:20px">还没有备注，添加第一条吧</div>';return;}
+  listEl.innerHTML=j.data.map(n=>{
+    const canDel=(n.created_by===displayName||role==='admin');
+    const time=new Date(n.created_at).toLocaleString('zh-CN',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'});
+    return `<div style="display:flex;justify-content:space-between;align-items:flex-start;padding:8px 10px;border:1px solid #f0f0f0;border-radius:6px;margin-bottom:6px;background:#fafafa">
+      <div style="flex:1"><div style="font-size:13px">${escHtml(n.content)}</div>
+      <div style="font-size:11px;color:#999;margin-top:3px">${time} · ${n.created_by||'-'}${n.qty>0?' · 领用'+fmtInt(n.qty)+'个':''}</div></div>
+      ${canDel?`<button class="btn btn-sm" style="color:#e53935;border:none;background:none;cursor:pointer;font-size:14px" onclick="deleteNote(${n.id})" title="删除">🗑️</button>`:''}
+    </div>`;
+  }).join('');
+}
+async function addNote(){
+  const content=document.getElementById('noteInput').value.trim();
+  if(!content){showToast('请输入备注内容');return;}
+  const qty=parseFloat(document.getElementById('noteQty').value)||0;
+  const j=await(await fetch(`api/notes/${_notesProductId}`,{method:'POST',headers:getHeaders(),body:JSON.stringify({content,qty})})).json();
+  if(j.success){
+    document.getElementById('noteInput').value='';
+    document.getElementById('noteQty').value='';
+    await loadNotesList();
+    showToast('✅ 备注已添加');
+  }else{showToast('❌ '+j.error);}
+}
+async function deleteNote(id){
+  const j=await(await fetch(`api/notes/${id}`,{method:'DELETE',headers:getHeaders()})).json();
+  if(j.success){await loadNotesList();showToast('已删除');}
+  else showToast('❌ '+j.error);
+}
+// 语音备注（复用 ASR 链路）
+let _noteRecorder=null,_noteChunks=[];
+async function startNoteVoice(){
+  const btn=document.getElementById('noteVoiceBtn');
+  if(_noteRecorder&&_noteRecorder.state==='recording'){
+    _noteRecorder.stop();btn.textContent='🎤';return;
+  }
+  if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){showToast('浏览器不支持麦克风');return;}
+  try{
+    const stream=await navigator.mediaDevices.getUserMedia({audio:true});
+    const mime=getSupportedMime();
+    _noteChunks=[];
+    _noteRecorder=new MediaRecorder(stream,mime?{mimeType:mime}:{});
+    _noteRecorder.ondataavailable=e=>{if(e.data.size>0)_noteChunks.push(e.data);};
+    _noteRecorder.onstop=async()=>{
+      stream.getTracks().forEach(t=>t.stop());
+      btn.textContent='⏳';
+      const blob=new Blob(_noteChunks,{type:_noteChunks[0].type||'audio/webm'});
+      const fd=new FormData();fd.append('audio',blob,'note.webm');
+      const headers=getHeaders();delete headers['Content-Type'];
+      try{
+        const j=await(await fetch('api/voice/asr',{method:'POST',headers,body:fd})).json();
+        btn.textContent='🎤';
+        if(j.success&&j.text){document.getElementById('noteInput').value=j.text;showToast('🎤 语音已识别，可修改后提交');}
+        else showToast('语音识别失败');
+      }catch(e){btn.textContent='🎤';showToast('语音上传失败');}
+    };
+    _noteRecorder.start();
+    btn.textContent='⏺';
+    showToast('正在录音，再次点击停止');
+  }catch(e){showToast('麦克风启动失败');}
 }
 
 // ====== 供应商管理 ======
@@ -603,15 +699,17 @@ async function loadDashboard(){
   var tp=0,ts=0,ti=0,to=0;
   data.forEach(function(r){tp+=+r.products;ts+=+r.stock;ti+=+r.total_in;to+=+r.total_out;});
   document.getElementById('dashProducts').textContent=tp;
-  document.getElementById('dashStock').textContent=ts;
-  document.getElementById('dashIn').textContent=ti;
-  document.getElementById('dashOut').textContent=to;
+  document.getElementById('dashStock').textContent=fmtInt(ts);
+  document.getElementById('dashIn').textContent=fmtInt(ti);
+  document.getElementById('dashOut').textContent=fmtInt(to);
   // 明细表
   var b=document.getElementById('dashBody');
   if(!data.length){b.innerHTML='<tr><td colspan="5" class="loading">暂无数据</td></tr>';}
   else{b.innerHTML=data.map(function(r){
-    return '<tr><td><b>'+r.supplier_name+'</b></td><td>'+r.products+'</td><td>'+r.total_in+'</td><td>'+r.total_out+'</td><td><b>'+r.stock+'</b></td></tr>';
+    return '<tr><td><b>'+r.supplier_name+'</b></td><td>'+r.products+'</td><td>'+fmtInt(r.total_in)+'</td><td>'+fmtInt(r.total_out)+'</td><td><b>'+fmtInt(r.stock)+'</b></td></tr>';
   }).join('');}
+  // AI角色化报告
+  loadAiReport();
   // 图表
   if(typeof echarts==='undefined')return;
   var names=data.map(function(r){return r.supplier_name;});
@@ -620,7 +718,7 @@ async function loadDashboard(){
     tooltip:{trigger:'axis'},
     legend:{data:['累计入库','累计出库','当前库存'],bottom:0,textStyle:{fontSize:11}},
     grid:{left:50,right:20,top:30,bottom:60},
-    xAxis:{type:'category',data:names,axisLabel:{rotate:names.length>4?22:0,fontSize:11,interval:0}},
+    xAxis:{type:'category',data:names,axisLabel:{rotate:30,fontSize:10,interval:0}},
     yAxis:{type:'value'},
     series:[
       {name:'累计入库',type:'bar',data:data.map(function(r){return +r.total_in;}),itemStyle:{color:'#43a047'}},
@@ -638,6 +736,24 @@ async function loadDashboard(){
   },true);
 }
 window.addEventListener('resize',function(){if(_chartBar)_chartBar.resize();if(_chartPie)_chartPie.resize();});
+
+async function loadAiReport(){
+  const card=document.getElementById('aiReportCard');
+  const body=document.getElementById('aiReportBody');
+  const roleTag=document.getElementById('aiReportRole');
+  card.style.display='block';
+  body.innerHTML='<span style="color:#999">正在生成角色化分析报告...</span>';
+  try{
+    const j=await(await fetch(apiUrl('api/dashboard/report'),{headers:getHeaders()})).json();
+    if(j.success){
+      const roleNames={executive:'总经理视角',admin:'仓库管理视角',leader:'船体队长视角',analyst:'成本分析视角'};
+      roleTag.textContent=roleNames[j.data.role]||'';
+      body.innerHTML=escHtml(j.data.report);
+    }else{
+      body.innerHTML='<span style="color:#e53935">报告加载失败</span>';
+    }
+  }catch(e){body.innerHTML='<span style="color:#e53935">报告加载失败: '+e.message+'</span>';}
+}
 
 async function loadChangelog(){
   _loadChangelog();
@@ -711,7 +827,7 @@ async function showHistoryDocs(){
     const r = await fetch('api/documents', {headers: getHeaders()});
     const j = await r.json();
     if (!j.success || !j.data.length) {
-      body.innerHTML = '<div style="text-align:center;padding:40px;color:#999">暂无历史单据</div>';
+      body.innerHTML = '<div style="text-align:center;padding:40px;color:#999">还没有入库单据，拍照入库后会显示在这里</div>';
       return;
     }
     let html = '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px">';
@@ -720,7 +836,7 @@ async function showHistoryDocs(){
       const sizeKB = Math.round(doc.size / 1024);
       const fullPath = doc.path.startsWith('/docs/') ? '/inventory' + doc.path : doc.path;
       html += `<div style="border:1px solid #e0f2fe;border-radius:8px;overflow:hidden;background:#fff;cursor:pointer" onclick="window.open('${fullPath}','_blank')">
-        <img src="${fullPath}" style="width:100%;height:140px;object-fit:cover" loading="lazy">
+        <img src="${fullPath}" style="width:100%;height:140px;object-fit:cover" loading="lazy" onerror="imgFallback(this)">
         <div style="padding:8px;font-size:11px;color:#666">
           <div>${date}</div>
           <div style="color:#999">${sizeKB} KB</div>
@@ -754,10 +870,26 @@ async function loadAnalysis(){
   const container=document.getElementById('analysisContent');
   container.innerHTML='<div class="loading">正在分析项目×备件联动数据...</div>';
   try{
-    const j=await(await fetch('api/analysis',{headers:getHeaders()})).json();
-    if(!j.success){container.innerHTML='<div class="loading">❌ '+j.error+'</div>';return;}
-    const {milestones,category_stats,risks,ai_insight}=j.data;
+    // 并行获取分析数据 + 总项目节点
+    const [aj, mj] = await Promise.all([
+      fetch('api/analysis',{headers:getHeaders()}).then(r=>r.json()),
+      fetch(apiUrl('api/milestones'),{headers:getHeaders()}).then(r=>r.json())
+    ]);
+    if(!aj.success){container.innerHTML='<div class="loading">❌ '+aj.error+'</div>';return;}
+    const {milestones,category_stats,risks,ai_insight}=aj.data;
     let html='';
+    // 🚢 总项目节点表（三级联动顶层）
+    if(mj.success && mj.data.length){
+      const ms=mj.data;
+      const statusMap={done:{icon:'✅',text:'已完成',color:'#2e7d32'},active:{icon:'🔨',text:'进行中',color:'#e65100'},pending:{icon:'⏳',text:'未开始',color:'#888'}};
+      html+=`<div class="analysis-section"><h3>🚢 总建造节点（${currentShip==='YY01'?'远洋01':'远洋02'}）</h3>`;
+      html+=`<div class="milestone-timeline">`;
+      ms.forEach((m,i)=>{
+        const s=statusMap[m.status]||statusMap.pending;
+        html+=`<div class="milestone-item ${m.status}"><div class="milestone-dot" style="background:${s.color}"></div><div class="milestone-info"><strong>${m.milestone}</strong><span style="font-size:11px;color:#888">${m.planned_date}</span><span class="milestone-status" style="color:${s.color}">${s.icon} ${s.text}</span></div></div>`;
+      });
+      html+=`</div><div style="font-size:11px;color:#999;margin-top:6px">ℹ️ 总节点 → 设备级建造计划 → 备件需求三级联动</div></div>`;
+    }
     // AI洞察卡片
     html+=`<div class="analysis-insight"><div class="analysis-insight-title">🧠 AI 分析</div><div class="analysis-insight-body">${escHtml(ai_insight)}</div></div>`;
     // 节点时间轴表
@@ -784,7 +916,7 @@ async function loadAnalysis(){
     }
     html+=`</div>`;
     // 📈 出库预测区块
-    const forecast = j.data.forecast || [];
+    const forecast = aj.data.forecast || [];
     if(forecast.length){
       html+=`<div class="analysis-section"><h3>📈 出库预测（未杧60天）</h3>`;
       html+=`<div class="analysis-table-wrap"><table class="analysis-table"><thead><tr><th>备件</th><th>规格</th><th>当前库存</th><th>计划出库明细</th><th>预测最低</th><th>断料日</th><th>状态</th></tr></thead><tbody>`;

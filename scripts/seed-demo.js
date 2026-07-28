@@ -90,6 +90,15 @@ CREATE TABLE IF NOT EXISTS change_log (
   ref_record_id INTEGER,
   created_at TIMESTAMP DEFAULT NOW()
 );
+
+CREATE TABLE IF NOT EXISTS product_notes (
+  id SERIAL PRIMARY KEY,
+  product_id INTEGER REFERENCES products(id),
+  content TEXT NOT NULL,
+  qty NUMERIC(12,2) DEFAULT 0,
+  created_by VARCHAR(100) DEFAULT '',
+  created_at TIMESTAMP DEFAULT NOW()
+);
 `;
 
 // ====== 虚构数据定义 ======
@@ -100,6 +109,7 @@ const USERS = [
   { username: 'caojie', password: 'demo1234', display_name: '曹洁', role: 'admin' },
   { username: 'zhangwei', password: 'demo1234', display_name: '张威', role: 'leader' },
   { username: 'chenjun', password: 'demo1234', display_name: '陈俊', role: 'analyst' },
+  { username: 'hezong', password: 'demo1234', display_name: '何总', role: 'executive' },
 ];
 
 // 备件定义: [name, spec, unit, supplierIdx(0-4), category]
@@ -358,6 +368,39 @@ async function main() {
   console.log(`✅ 入库记录: ${inboundCount} 条`);
   console.log(`✅ 出库记录: ${outboundCount} 条`);
   console.log(`✅ 总计: ${inboundCount + outboundCount} 条出入库记录`);
+
+  // 6.5 挂载单据图片（给前7条入库记录挂虚构送货单）
+  const imgRecords = await pool.query('SELECT id FROM inbound_records ORDER BY id LIMIT 7');
+  for (let i = 0; i < imgRecords.rows.length; i++) {
+    await pool.query('UPDATE inbound_records SET doc_image_path=$1 WHERE id=$2',
+      ['/doc-samples/delivery-' + (i + 1) + '.svg', imgRecords.rows[i].id]);
+  }
+  console.log(`✅ 单据图片: ${imgRecords.rows.length} 条入库记录已挂载`);
+
+  // 6.6 预埋产品备注（螺丝/O型圈各 2-3 条）
+  const noteProducts = await pool.query(
+    "SELECT id, name FROM products WHERE name LIKE '%O型密封圈%' LIMIT 1");
+  const noteProducts2 = await pool.query(
+    "SELECT id, name FROM products WHERE name LIKE '%电缆扎带%' LIMIT 1");
+  const allNoteProducts = [...noteProducts.rows, ...noteProducts2.rows];
+  const sampleNotes = [
+    { content: '7/25 管系班领走30个，余量充足', qty: 30, by: '曹洁' },
+    { content: '7/22 机务组领用15个，用于YY01舾装', qty: 15, by: '张威' },
+    { content: '7/20 散装小件盘点，实际库存与账面基本一致', qty: 0, by: '曹洁' },
+    { content: '7/18 电气班领走20个，用于配电箱接线', qty: 20, by: '张威' },
+  ];
+  let noteCount = 0;
+  for (let i = 0; i < Math.min(allNoteProducts.length, 2); i++) {
+    const pid = allNoteProducts[i].id;
+    const notes = i === 0 ? sampleNotes.slice(0, 3) : sampleNotes.slice(1, 4);
+    for (const n of notes) {
+      await pool.query(
+        'INSERT INTO product_notes (product_id, content, qty, created_by, created_at) VALUES ($1,$2,$3,$4,NOW() - INTERVAL \'' + (noteCount * 2 + 1) + ' days\')',
+        [pid, n.content, n.qty, n.by]);
+      noteCount++;
+    }
+  }
+  console.log(`✅ 产品备注: ${noteCount} 条预埋`);
 
   // 7. 验证输出
   console.log('\n====== 数据验证 ======');

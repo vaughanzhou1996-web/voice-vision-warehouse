@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>远洋船舶进出库管理系统</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔧</text></svg>">
 <link rel="stylesheet" href="style.css?v=2">
 </head>
 <body>
@@ -86,10 +87,11 @@
         <th onclick="sortTable(4)">入库总数<span class="sort-icon">↕</span></th>
         <th onclick="sortTable(5)">出库总数<span class="sort-icon">↕</span></th>
         <th onclick="sortTable(6)">当前库存<span class="sort-icon">↕</span></th>
+        <th>备注</th>
         <th>单据</th>
         <th>操作</th>
       </tr></thead>
-      <tbody id="inventoryBody"><tr><td colspan="10" class="loading">加载中...</td></tr></tbody>
+      <tbody id="inventoryBody"><tr><td colspan="11" class="loading">加载中...</td></tr></tbody>
     </table>
   </div>
 </div>
@@ -116,6 +118,10 @@
     <div class="table-actions">
       <button class="btn btn-sm" onclick="loadDashboard()">🔄 刷新</button>
     </div>
+  </div>
+  <div id="aiReportCard" class="ai-report-card" style="display:none">
+    <div class="ai-report-header">🧠 AI 分析报告 <span id="aiReportRole" class="ai-report-role"></span></div>
+    <div id="aiReportBody" class="ai-report-body">加载中...</div>
   </div>
   <div class="dash-cards">
     <div class="dash-card"><div class="dash-card-num" id="dashProducts">-</div><div class="dash-card-label">物品种类</div></div>
@@ -376,6 +382,27 @@
 </div>
 
 <div id="batchDocsModal" class="modal-overlay" onclick="if(event.target===this)hideModal('batchDocsModal')"><div class="modal" style="max-width:800px"><div class="modal-header"><b id="batchDocsTitle"></b><span onclick="hideModal('batchDocsModal')" style="cursor:pointer;font-size:20px;line-height:1">✕</span></div><div class="modal-body" id="batchDocsBody" style="max-height:65vh;overflow-y:auto"></div></div></div>
+
+<!-- ====== 产品备注弹窗 ====== -->
+<div class="modal-overlay" id="notesModal" onclick="if(event.target===this)hideModal('notesModal')">
+  <div class="modal modal-wide" style="max-width:520px"><div class="modal-header"><h3>📝 产品备注 <small id="notesProductName" style="font-size:12px;color:#888;font-weight:normal"></small></h3><button class="modal-close" onclick="hideModal('notesModal')">✕</button></div>
+  <div class="modal-body" style="max-height:65vh;overflow-y:auto;padding:16px">
+    <div id="notesQtySummary" style="background:#fff8e1;border-radius:8px;padding:10px 14px;margin-bottom:12px;font-size:13px;color:#e65100;display:none"></div>
+    <div id="notesList" style="margin-bottom:16px"></div>
+    <div style="border-top:1px solid #eee;padding-top:12px">
+      <div style="display:flex;gap:8px;align-items:flex-end">
+        <div style="flex:1">
+          <textarea id="noteInput" class="form-input" rows="2" placeholder="输入备注内容..." style="resize:vertical;width:100%"></textarea>
+          <div style="display:flex;gap:8px;margin-top:6px;align-items:center">
+            <input type="number" id="noteQty" class="form-input" placeholder="领用数量(可选)" style="width:120px;font-size:12px">
+            <button class="btn btn-sm" onclick="startNoteVoice()" title="语音输入" id="noteVoiceBtn">🎤</button>
+          </div>
+        </div>
+        <button class="btn btn-primary" onclick="addNote()" style="height:36px">添加</button>
+      </div>
+    </div>
+  </div></div>
+</div>
 
 <script src="lib/echarts.min.js"></script>
 <script src="app.js?v=2"></script>

@@ -440,10 +440,10 @@ app.get('/api/dashboard', auth, async (req, res) => {
   try {
     const r = await pool.query(`
       SELECT COALESCE(s.name,'未分类') AS supplier_name,
-        COUNT(p.id) AS products,
-        COALESCE(SUM(inb.t),0) AS total_in,
-        COALESCE(SUM(outb.t),0) AS total_out,
-        COALESCE(SUM(inb.t),0)-COALESCE(SUM(outb.t),0) AS stock
+        COUNT(p.id)::int AS products,
+        COALESCE(SUM(inb.t),0)::int AS total_in,
+        COALESCE(SUM(outb.t),0)::int AS total_out,
+        (COALESCE(SUM(inb.t),0)-COALESCE(SUM(outb.t),0))::int AS stock
       FROM products p
       LEFT JOIN suppliers s ON p.supplier_id=s.id
       LEFT JOIN (SELECT product_id,SUM(quantity) t FROM inbound_records GROUP BY product_id) inb ON p.id=inb.product_id
@@ -452,6 +452,94 @@ app.get('/api/dashboard', auth, async (req, res) => {
       GROUP BY COALESCE(s.name,'未分类')
       ORDER BY stock DESC, total_in DESC`, [getShip(req)]);
     res.json({ success: true, data: r.rows });
+  } catch (e) { res.json({ success: false, error: e.message }); }
+});
+
+// 角色化 AI 分析报告（看板用）
+app.get('/api/dashboard/report', auth, async (req, res) => {
+  try {
+    const role = req.user.role;
+    const name = req.user.displayName;
+    const ship = getShip(req);
+    // 收集真实数据
+    const stock = await pool.query(`SELECT COUNT(*) AS total, SUM(CASE WHEN COALESCE(inb.t,0)-COALESCE(outb.t,0)<3 THEN 1 ELSE 0 END) AS low FROM products p LEFT JOIN (SELECT product_id,SUM(quantity) t FROM inbound_records GROUP BY product_id) inb ON p.id=inb.product_id LEFT JOIN (SELECT product_id,SUM(quantity) t FROM outbound_records GROUP BY product_id) outb ON p.id=outb.product_id WHERE p.project_no=$1`, [ship]);
+    const today = await pool.query(`SELECT COUNT(*) AS c FROM inbound_records WHERE date=CURRENT_DATE AND product_id IN (SELECT id FROM products WHERE project_no=$1)`, [ship]);
+    const todayOut = await pool.query(`SELECT COUNT(*) AS c FROM outbound_records WHERE date=CURRENT_DATE AND product_id IN (SELECT id FROM products WHERE project_no=$1)`, [ship]);
+    // 预测数据
+    let forecastSummary = '';
+    try {
+      const { computeForecast } = require('./lib/forecast');
+      const fc = await computeForecast(pool, ship);
+      const reds = fc.filter(f => f.status === 'red');
+      const yellows = fc.filter(f => f.status === 'yellow');
+      forecastSummary = `断料风险${reds.length}项` + (reds.length ? '(' + reds.slice(0, 3).map(f => f.product).join('/') + ')' : '') + `，黄灯${yellows.length}项`;
+    } catch (e) { forecastSummary = '预测模块不可用'; }
+    // 节点数据
+    let milestoneSummary = '';
+    try {
+      const ms = JSON.parse(fs.readFileSync(path.join(__dirname, 'data', 'project-milestones.json'), 'utf8'));
+      const list = ms[ship] || [];
+      const active = list.filter(m => m.status === 'active');
+      const pending = list.filter(m => m.status === 'pending');
+      milestoneSummary = `当前阶段:${active.map(m => m.milestone).join('/')||'无'}，待完成:${pending.map(m => m.milestone).join('/')||'无'}`;
+    } catch (e) { milestoneSummary = '';
+    }
+    const snapshot = `角色:${role} 用户:${name} 船号:${ship}\n库存:${stock.rows[0].total}种/告急${stock.rows[0].low}种\n今日入库${today.rows[0].c}笔/出库${todayOut.rows[0].c}笔\n预测:${forecastSummary}\n节点:${milestoneSummary}`;
+    const prompts = {
+      executive: `你是船舶建造项目AI分析师。请为何总生成200字战略级报告：两船建造节点风险、断料对交期的影响、供应链健康度、库存资金占用。开头用"何总，您好"。`,
+      admin: `你是仓库管理AI助手。请为曹姐生成200字库存管理报告：今日出入库动态、低库存/断料预警清单、待办事项。开头用"曹姐，您好"。`,
+      leader: `你是船舶建造AI助手。请为张威队长生成200字报告：本船建造节点的备件保障风险、哪些节点可能因缺料延期。开头用"张队，您好"。`,
+      analyst: `你是成本分析AI助手。请为陈俊生成200字报告：库存资金占用、呆滞物料分析、采购节奏建议。开头用"陈俊，您好"。`
+    };
+    let report;
+    try {
+      report = await chatText([
+        { role: 'system', text: prompts[role] || prompts.admin },
+        { role: 'user', text: snapshot }
+      ], { temperature: 0.5, max_tokens: 500 });
+    } catch (e) {
+      report = `${name}，您好。当前${ship}库存${stock.rows[0].total}种，告急${stock.rows[0].low}种。${forecastSummary}。${milestoneSummary}。`;
+    }
+    res.json({ success: true, data: { report, role } });
+  } catch (e) { res.json({ success: false, error: e.message }); }
+});
+
+// 总项目节点表
+app.get('/api/milestones', auth, (req, res) => {
+  try {
+    const ms = JSON.parse(fs.readFileSync(path.join(__dirname, 'data', 'project-milestones.json'), 'utf8'));
+    const ship = getShip(req);
+    res.json({ success: true, data: ms[ship] || [] });
+  } catch (e) { res.json({ success: false, error: e.message }); }
+});
+
+// 产品备注 CRUD
+app.get('/api/notes/:productId', auth, async (req, res) => {
+  try {
+    const r = await pool.query('SELECT * FROM product_notes WHERE product_id=$1 ORDER BY created_at DESC', [req.params.productId]);
+    const totalQty = r.rows.reduce((s, n) => s + (parseFloat(n.qty) || 0), 0);
+    res.json({ success: true, data: r.rows, total_qty: totalQty });
+  } catch (e) { res.json({ success: false, error: e.message }); }
+});
+app.post('/api/notes/:productId', auth, async (req, res) => {
+  try {
+    const { content, qty } = req.body;
+    if (!content) return res.json({ success: false, error: '备注内容不能为空' });
+    const r = await pool.query(
+      'INSERT INTO product_notes (product_id, content, qty, created_by) VALUES ($1,$2,$3,$4) RETURNING *',
+      [req.params.productId, content, qty || 0, req.user.displayName]);
+    res.json({ success: true, data: r.rows[0] });
+  } catch (e) { res.json({ success: false, error: e.message }); }
+});
+app.delete('/api/notes/:id', auth, async (req, res) => {
+  try {
+    const note = (await pool.query('SELECT * FROM product_notes WHERE id=$1', [req.params.id])).rows[0];
+    if (!note) return res.json({ success: false, error: '备注不存在' });
+    if (note.created_by !== req.user.displayName && req.user.role !== 'admin') {
+      return res.json({ success: false, error: '只能删除自己的备注' });
+    }
+    await pool.query('DELETE FROM product_notes WHERE id=$1', [req.params.id]);
+    res.json({ success: true });
   } catch (e) { res.json({ success: false, error: e.message }); }
 });
 

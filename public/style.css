@@ -246,3 +246,18 @@ tbody tr:last-child td { border-bottom:none; }
 /* ====== 语音录音动效 ====== */
 .voice-btn.voice-recording { background:#e53935 !important; color:#fff !important; animation:voicePulse 1s infinite; border-radius:50%; }
 @keyframes voicePulse { 0%{box-shadow:0 0 0 0 rgba(229,57,53,.5)} 70%{box-shadow:0 0 0 10px rgba(229,57,53,0)} 100%{box-shadow:0 0 0 0 rgba(229,57,53,0)} }
+
+/* ====== AI 角色化报告卡片 ====== */
+.ai-report-card { margin:0 20px 16px; background:linear-gradient(135deg,#f0f7ff,#e8f4fd); border:1px solid #bae0ff; border-radius:12px; padding:16px 20px; }
+.ai-report-header { font-size:15px; font-weight:700; color:#1a3a5c; margin-bottom:10px; display:flex; align-items:center; gap:8px; }
+.ai-report-role { font-size:11px; background:#0ea5e9; color:#fff; padding:2px 8px; border-radius:10px; font-weight:500; }
+.ai-report-body { font-size:13px; line-height:1.8; color:#333; white-space:pre-wrap; }
+
+/* ====== 总建造节点时间轴 ====== */
+.milestone-timeline { display:flex; flex-wrap:wrap; gap:8px; padding:8px 0; }
+.milestone-item { display:flex; align-items:center; gap:8px; padding:8px 14px; background:#fff; border:1px solid #e8e8e8; border-radius:8px; min-width:130px; }
+.milestone-item.done { border-color:#c8e6c9; background:#f1f8e9; }
+.milestone-item.active { border-color:#ffe0b2; background:#fff8e1; }
+.milestone-dot { width:10px; height:10px; border-radius:50%; flex-shrink:0; }
+.milestone-info { display:flex; flex-direction:column; gap:2px; font-size:13px; }
+.milestone-status { font-size:11px; font-weight:500; }
