@@ -27,12 +27,17 @@ function request(method, urlPath, body, token) {
   });
 }
 
-// 断料案例的备件（必须被算出断料）
+// 断料案例的备件（必须被算出断料，projectedMin < 0）
 const STOCKOUT_PARTS = [
   { name: '截止阀', spec: 'GB/T587 DN50 PN16' },
   { name: '泵用机械密封', spec: '104-25 碳化硅/碳' },
   { name: '船用断路器', spec: 'DZ47-63 C32 2P' },
   { name: '球阀', spec: 'Q41F-16C DN25' },
+];
+
+// 黄档案例（projectedMin ∈ [0,3)，破安全线但未断料）
+const YELLOW_PARTS = [
+  { name: '轴接地阳极', spec: '铜轴专用 环形' },
 ];
 
 // 安全备件（不应误报）
@@ -66,12 +71,12 @@ async function main() {
       console.log(`  ❌ 未找到: ${exp.name} ${exp.spec}`);
       fail++; continue;
     }
-    // 动态手算断料日：当前库存 - 累计计划出库，首次 < 3 的日期
+    // 动态手算断料日：当前库存 - 累计计划出库，首次 < 0 的日期
     let level = found.current_stock;
     let expectedStockout = null;
     for (const s of found.scheduled) {
       level -= s.qty;
-      if (expectedStockout === null && level < 3) expectedStockout = s.date;
+      if (expectedStockout === null && level < 0) expectedStockout = s.date;
     }
     // 验证断料日计算正确
     if (found.stockout_date !== expectedStockout) {
@@ -121,7 +126,27 @@ async function main() {
   }
   console.log(`  ✅ ${schedPass}/${forecast.length} 条计划出库量与 build-schedule.json 一致`);
 
-  // 5. 验证安全备件无误报
+  // 5. 验证黄档案例
+  console.log('\n--- 黄档案例验证（破安全线但未断料）---');
+  for (const exp of YELLOW_PARTS) {
+    const found = forecast.find(f => f.product === exp.name && f.spec === exp.spec);
+    if (!found) {
+      console.log(`  ❌ 未找到: ${exp.name} ${exp.spec}`);
+      fail++; continue;
+    }
+    if (found.status !== 'yellow') {
+      console.log(`  ❌ ${exp.name} 状态应为yellow，实际${found.status}（projectedMin=${found.projected_min}）`);
+      fail++; continue;
+    }
+    if (found.projected_min < 0 || found.projected_min >= 3) {
+      console.log(`  ❌ ${exp.name} projectedMin=${found.projected_min} 不在[0,3)范围`);
+      fail++; continue;
+    }
+    console.log(`  ✅ ${exp.name}(${exp.spec}) 库存${found.current_stock}→最低${found.projected_min} → yellow`);
+    pass++;
+  }
+
+  // 6. 验证安全备件无误报
   console.log('\n--- 安全备件无误报验证 ---');
   for (const exp of SAFE_PARTS) {
     const found = forecast.find(f => f.product === exp.name && f.spec === exp.spec);

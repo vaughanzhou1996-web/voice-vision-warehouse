@@ -822,19 +822,25 @@ async function loadAnalysis(){
       const fcEl=document.getElementById('forecastChart');
       if(fcEl){
         if(!_forecastChart)_forecastChart=echarts.init(fcEl);
-        const top5=forecast.filter(f=>f.status==='red').slice(0,5);
-        const chartData=top5.length?top5:forecast.slice(0,5);
+        const riskItems=forecast.filter(f=>f.status==='red'||f.status==='yellow').slice(0,5);
+        const chartData=riskItems.length?riskItems:forecast.slice(0,5);
         const series=chartData.map(f=>{
           const pts=f.waterline.map(w=>[w.date,w.level]);
-          return {name:f.product+(f.spec?' '+f.spec.split(' ')[0]:''),type:'line',step:'end',data:pts,symbol:'circle',symbolSize:6,lineStyle:{width:2}};
+          // 断料点标记
+          const markPts=[];
+          if(f.stockout_date){
+            const soPt=f.waterline.find(w=>w.date===f.stockout_date);
+            if(soPt) markPts.push({coord:[soPt.date,soPt.level],symbol:'circle',symbolSize:14,itemStyle:{color:'#e53935'},label:{show:true,formatter:'断料',fontSize:10,color:'#e53935',position:'top'}});
+          }
+          return {name:f.product+(f.spec?' '+f.spec.split(' ')[0]:''),type:'line',step:'end',data:pts,symbol:'circle',symbolSize:5,lineStyle:{width:2},markPoint:{data:markPts}};
         });
         _forecastChart.setOption({
-          title:{text:'断料风险 TOP5 库存水位曲线',left:'center',textStyle:{fontSize:13}},
+          title:{text:`断料风险备件库存水位曲线（${chartData.length}项）`,left:'center',textStyle:{fontSize:13}},
           tooltip:{trigger:'axis'},
           legend:{bottom:0,textStyle:{fontSize:10},type:'scroll'},
-          grid:{left:50,right:30,top:40,bottom:50},
-          xAxis:{type:'category',boundaryGap:false,axisLabel:{fontSize:10}},
-          yAxis:{type:'value',name:'库存',min:0},
+          grid:{left:50,right:30,top:40,bottom:60},
+          xAxis:{type:'time',axisLabel:{fontSize:10,rotate:30}},
+          yAxis:{type:'value',name:'库存'},
           series:[...series,{name:'安全线',type:'line',markLine:{silent:true,symbol:'none',lineStyle:{type:'dashed',color:'#e53935'},data:[{yAxis:3,label:{formatter:'安全线=3',fontSize:10}}]},data:[]}]
         },true);
       }
