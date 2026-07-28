@@ -36,7 +36,7 @@
 # 0. 前置依赖：Node.js 18+ 和 PostgreSQL 12+（macOS: brew install postgresql@16）
 
 # 1. 克隆仓库
-git clone REPO_URL && cd inventory-hackathon
+git clone https://github.com/vaughanzhou1996-web/voice-vision-warehouse.git && cd voice-vision-warehouse
 
 # 2. 安装依赖
 npm install
