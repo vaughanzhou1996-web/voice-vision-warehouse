@@ -44,6 +44,7 @@
   - `qwen3-max-preview` — 文本对话 / 分析 / 邮件
   - `qwen-vl-max` — 视觉识别（送货单 / 对账单）
   - `qwen3-asr-flash` — 语音识别
+- **开发方式**：全程使用 Qoder IDE 编写（编码模型 Qwen-3.8-Max-Preview），零代码基础作者通过自然语言任务卡驱动开发
 - **邮件**：nodemailer（SMTP）+ imapflow（IMAP），沙箱白名单硬编码
 - **部署**：PUBLIC_URL（占位符，提交前替换）
 
