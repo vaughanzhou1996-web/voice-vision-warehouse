@@ -33,9 +33,10 @@ if (fs.existsSync(envPath)) {
   // 2.5 主演示备件保底：手册示例/对话演示要用的备件，库存必须 ≥ 演示基线
   console.log('\n--- 主演示备件保底检查 ---');
   const guard = new Pool({ connectionString: DATABASE_URL });
+  // 保底基线与卡11预埋断料案例联动：必须 ≥对话演示所需 且 <计划出库量(保持断料剧情)
   const HEROES = [
-    { like: '%截止阀%', spec: '%DN50%', min: 6 },
-    { like: '%球阀%', spec: '%DN25%', min: 10 },
+    { like: '%截止阀%', spec: '%DN50%', min: 4 },  // 对话出3剩1 + 计划5断料（差1只）
+    { like: '%球阀%', spec: '%DN25%', min: 2 },    // 语音查询有货 + 计划5断料
   ];
   for (const h of HEROES) {
     const r = await guard.query(`SELECT p.id, p.name, p.spec,
