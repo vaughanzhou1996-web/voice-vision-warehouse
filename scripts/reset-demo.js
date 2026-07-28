@@ -67,7 +67,7 @@ if (fs.existsSync(envPath)) {
     FROM products p WHERE p.name LIKE '%截止阀%' AND p.spec LIKE '%DN50%'`);
   console.log('\n--- 重置后验证 ---');
   console.log(`备件: ${p.rows[0].c} | 入库: ${i.rows[0].c} | 出库: ${o.rows[0].c}`);
-  console.log(`抽查 截止阀DN50: 库存=${s.rows[0]?.stock}（保底≥6）`);
+  console.log(`抽查 截止阀DN50: 库存=${s.rows[0]?.stock}（保底≥${HEROES[0].min}）`);
   await check.end();
   console.log('\n🎉 演示数据已恢复出厂状态');
 })().catch(e => { console.error('❌ 重置失败:', e.message); process.exit(1); });
