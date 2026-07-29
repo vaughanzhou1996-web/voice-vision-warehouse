@@ -170,7 +170,7 @@ async function loadInventory(){
   const json=await res.json();if(!json.success)return;
   const tbody=document.getElementById('inventoryBody');const data=json.data;
   const keyword=(document.getElementById('searchInput').value||'').toLowerCase();
-  const filtered=keyword?data.filter(r=>r.name.includes(keyword)||(r.spec||'').includes(keyword)||(r.supplier_name||'').includes(keyword)):data;
+  const filtered=keyword?data.filter(r=>(r.name||'').toLowerCase().includes(keyword)||(r.spec||'').toLowerCase().includes(keyword)||(r.supplier_name||'').toLowerCase().includes(keyword)):data;
   document.getElementById('countBadge').textContent=data.length+' 项';
   
   if(sid || keyword){
@@ -763,7 +763,7 @@ async function _loadChangelog(){
   if(!j.success)return;
   let data=j.data;
   const kw=(document.getElementById('logSearchInput').value||'').toLowerCase();
-  if(kw)data=data.filter(r=>(r.product_name||'').includes(kw)||(r.operator||'').includes(kw)||(r.details||'-').includes(kw));
+  if(kw)data=data.filter(r=>(r.product_name||'').toLowerCase().includes(kw)||(r.operator||'').toLowerCase().includes(kw)||(r.details||'-').toLowerCase().includes(kw));
   document.getElementById('logBadge').textContent=data.length+' 条';
   const tbody=document.getElementById('logBody');
   if(!data.length){tbody.innerHTML='<tr><td colspan="7" class="loading">暂无记录</td></tr>';return;}
@@ -808,7 +808,7 @@ async function loadInRecords(){
   if(!j.success)return;
   let d=j.data;
   const kw=(document.getElementById('inRecSearch').value||'').toLowerCase();
-  if(kw)d=d.filter(r=>(r.name||'').includes(kw)||(r.supplier_name||'').includes(kw));
+  if(kw)d=d.filter(r=>(r.name||'').toLowerCase().includes(kw)||(r.supplier_name||'').toLowerCase().includes(kw));
   document.getElementById('inRecBadge').textContent=d.length+' 条';
   const tbody=document.getElementById('inRecBody');
   if(!d.length){tbody.innerHTML='<tr><td colspan="8" class="loading">暂无记录</td></tr>';return;}
@@ -854,7 +854,7 @@ async function loadOutRecords(){
   if(!j.success)return;
   let d=j.data;
   const kw=(document.getElementById('outRecSearch').value||'').toLowerCase();
-  if(kw)d=d.filter(r=>(r.name||'').includes(kw));
+  if(kw)d=d.filter(r=>(r.name||'').toLowerCase().includes(kw));
   document.getElementById('outRecBadge').textContent=d.length+' 条';
   const tbody=document.getElementById('outRecBody');
   if(!d.length){tbody.innerHTML='<tr><td colspan="8" class="loading">暂无记录</td></tr>';return;}

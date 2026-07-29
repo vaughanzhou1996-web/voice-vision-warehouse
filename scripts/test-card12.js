@@ -199,6 +199,20 @@ async function main() {
   if (docsJ.data && docFileOk === docsJ.data.length) ok(`所有${docFileOk}个单据图片文件存在`);
   else ng(`${(docsJ.data?.length || 0) - docFileOk}个单据图片缺失`);
 
+  // 12. 搜索大小写修复
+  console.log('\n--- 12. 搜索大小写 ---');
+  const invJ = await req('GET', '/api/inventory?ship=YY01', null, caojie.token);
+  if (invJ.success) {
+    const kw1 = 'o型';
+    const r1 = invJ.data.filter(r => (r.name||'').toLowerCase().includes(kw1) || (r.spec||'').toLowerCase().includes(kw1));
+    if (r1.some(r => r.name.includes('O型密封圈'))) ok(`搜索"o型"→找到O型密封圈 (${r1.length}条)`);
+    else ng(`搜索"o型"未找到O型密封圈`);
+    const kw2 = 'dn50';
+    const r2 = invJ.data.filter(r => (r.name||'').toLowerCase().includes(kw2) || (r.spec||'').toLowerCase().includes(kw2));
+    if (r2.some(r => (r.spec||'').includes('DN50'))) ok(`搜索"dn50"→找到DN50产品 (${r2.length}条)`);
+    else ng(`搜索"dn50"未找到DN50产品`);
+  } else ng('inventory API失败');
+
   await pool.end();
 
   // 汇总
