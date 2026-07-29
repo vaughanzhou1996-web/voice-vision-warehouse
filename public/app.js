@@ -815,7 +815,7 @@ async function loadInRecords(){
   tbody.innerHTML=d.map(r=>`<tr><td style="font-size:12px;color:#888">${fmtDate(r.date)}</td>
     <td>${r.name}</td><td>${r.spec||'-'}</td><td>${r.quantity}</td><td>${r.unit||'-'}</td>
     <td>${r.supplier_name||'-'}</td><td>${r.operator||'-'}</td>
-    <td>${r.doc_ref&&r.doc_ref.includes('AI')?'🤖':' '}${r.doc_image_path?'📷':''}</td></tr>`).join('');
+    <td>${r.doc_ref&&r.doc_ref.includes('AI')?'🤖':' '}${r.doc_image_path?`<img src="${r.doc_image_path}" style="width:36px;height:36px;object-fit:cover;border-radius:4px;cursor:pointer;vertical-align:middle" onclick="window.open('${r.doc_image_path}','_blank')" onerror="this.style.display='none'">`:''}</td></tr>`).join('');
 }
 
 // ====== 出库记录 ======

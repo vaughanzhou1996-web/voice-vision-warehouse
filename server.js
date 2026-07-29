@@ -268,40 +268,102 @@ app.post('/api/recognize', auth, async (req, res) => {
       });
       return validItems.length > 0;
     }
-    
-    // Qwen视觉识别重试（最多3次）
+
+    // 生产最新识别 prompt（6条规则防黏连）
+    const RECOGNIZE_PROMPT = `提取送货单中的入库信息，只返回JSON格式：
+{"supplier":"供应商名","items":[{"name":"产品名","spec":"规格型号","qty":数量,"unit":"单位"}],"date":"日期"}
+
+严格规则：
+① 品名+规格都相同才合并数量，其他情况严禁合并
+② 同名不同规格必须分行，严禁合并（如吸入口 AS100Y 和 AS125S 必须分两行）
+③ 拿不准是否同一产品就分行，宁可多分不可合并
+④ 品名干净，去除多余空格和特殊字符
+⑤ 每一行必须独立读取规格列，严禁复制上一行的规格
+⑥ 送货单表格有几行就输出几个item，逐行照抄不做合并，即使品名和规格都相同也分行输出`;
+
+    // normSpec: 去空格+大写+全角逗号→半角
+    function normSpec(s) { return (s||'').replace(/\s+/g,'').toUpperCase().replace(/，/g,','); }
+
+    // 识图模型链: qwen-vl-max 主，MiniMax-M3 兜底
+    const VISION_CHAIN = ['qwen-vl-max'];
+    const minimaxKey = process.env.MINIMAX_API_KEY || (() => {
+      try { const m = fs.readFileSync(path.join(__dirname, '.env'), 'utf8').match(/MINIMAX_API_KEY=(\S+)/); return m ? m[1] : ''; } catch(e) { return ''; }
+    })();
+    if (minimaxKey) VISION_CHAIN.push('MiniMax-M3');
+
     let reply = '';
     let info = null;
-    for (let attempt = 0; attempt < 3; attempt++) {
-      reply = await chatVision([
-        {role: 'system', text: '提取送货单中的入库信息，只返回JSON格式：\n{"supplier":"供应商名","items":[{"name":"产品名","spec":"规格型号","qty":数量,"unit":"单位"}],"date":"日期"}'},
-        {role: 'user', text: '提取信息', image: imgPath}
-      ]);
-      
-      if (!reply || !reply.trim()) continue;
-      
-      try { info = JSON.parse(reply); } catch(e) { info = null; }
-      if (!info) {
-        try { info = JSON.parse(reply.replace(/,\s*}/g,'}').replace(/,\s*\]/g,']').replace(/(['"])?([a-zA-Z0-9_]+)(['"])?\s*:/g,'"$2":').replace(/\\'/g,"'")); } catch(e) { info = null; }
-      }
-      if (!info) {
-        const m = reply.match(/\{[^{}]*"items"\s*:\s*\[/);
-        if (m) {
-          let depth=0, end=m.index;
-          for (let i=m.index; i<reply.length; i++) {
-            if (reply[i]==='{') depth++;
-            else if (reply[i]==='}') { depth--; if (depth===0) { end=i+1; break; } }
-          }
-          try { info = JSON.parse(reply.substring(m.index, end)); } catch(e) { info = null; }
-        }
-      }
-      
+    let usedModel = '';
+
+    for (const modelName of VISION_CHAIN) {
       if (info && isValidResult(info)) break;
-      info = null;
+      const maxTokens = modelName === 'qwen-vl-max' ? 32768 : 65536;
+      for (let attempt = 0; attempt < 2; attempt++) {
+        try {
+          if (modelName === 'qwen-vl-max') {
+            reply = await chatVision([
+              {role: 'system', text: RECOGNIZE_PROMPT},
+              {role: 'user', text: '提取信息', image: imgPath}
+            ], { max_tokens: maxTokens });
+          } else {
+            // MiniMax-M3 兜底（OpenAI兼容）
+            const absPath = imgPath.startsWith('/uploads/') ? path.join(__dirname, imgPath) : imgPath;
+            const b64 = fs.readFileSync(absPath, { encoding: 'base64' });
+            const resp = await axios.post('https://api.minimax.chat/v1/text/chatcompletion_v2', {
+              model: 'MiniMax-M3',
+              messages: [
+                { role: 'system', content: RECOGNIZE_PROMPT },
+                { role: 'user', content: [
+                  { type: 'image_url', image_url: { url: 'data:image/jpeg;base64,' + b64 } },
+                  { type: 'text', text: '提取信息' }
+                ]}
+              ],
+              max_tokens: maxTokens
+            }, { headers: { 'Authorization': `Bearer ${minimaxKey}`, 'Content-Type': 'application/json' }, timeout: 60000 });
+            reply = resp.data.choices?.[0]?.message?.content || '';
+          }
+          usedModel = modelName;
+          console.log(`[Recognize] model=${modelName} attempt=${attempt} len=${(reply||'').length}`);
+          console.log(`[Recognize] raw=${(reply||'').substring(0, 500)}`);
+        } catch (e) {
+          const status = e.response?.status || 'N/A';
+          const body = JSON.stringify(e.response?.data || '').substring(0, 150);
+          console.error(`[Recognize] model=${modelName} attempt=${attempt} HTTP ${status}: ${body}`);
+          if (attempt === 0) continue;
+          break; // 该模型失败，尝试下一个
+        }
+        if (!reply || !reply.trim()) continue;
+        try { info = JSON.parse(reply); } catch(e) { info = null; }
+        if (!info) {
+          try { info = JSON.parse(reply.replace(/,\s*}/g,'}').replace(/,\s*\]/g,']').replace(/(['"])?([a-zA-Z0-9_]+)(['"])?\s*:/g,'"$2":').replace(/\\'/g,"'")); } catch(e) { info = null; }
+        }
+        if (!info) {
+          const m = reply.match(/\{[^{}]*"items"\s*:\s*\[/);
+          if (m) {
+            let depth=0, end=m.index;
+            for (let i=m.index; i<reply.length; i++) {
+              if (reply[i]==='{') depth++;
+              else if (reply[i]==='}') { depth--; if (depth===0) { end=i+1; break; } }
+            }
+            try { info = JSON.parse(reply.substring(m.index, end)); } catch(e) { info = null; }
+          }
+        }
+        if (info && isValidResult(info)) break;
+        info = null;
+      }
     }
     
     // 验证结果真实性——尝试匹配供应商但不强制
     if (info && isValidResult(info)) {
+      // 不做自动合并——模型已逐行输出，合并由用户确认入库时前端处理
+      // 仅清理 name/spec 空白
+      info.items = info.items.map(item => ({
+        ...item,
+        name: (item.name||'').trim(),
+        spec: (item.spec||'').trim()
+      }));
+      info.model = usedModel;
+
       const match = await pool.query('SELECT id,name FROM suppliers');
       let matchedSupplier = info.supplier || '';
       for (const supplier of match.rows) {
@@ -332,7 +394,10 @@ app.post('/api/recognize', auth, async (req, res) => {
     } else {
       res.json({ success: false, error: '未能识别出货品信息，请尝试手工录入' });
     }
-  } catch (e) { res.json({ success: false, error: e.message }); }
+  } catch (e) {
+    console.error('[Recognize] 未捕获异常:', e.message);
+    res.json({ success: false, error: e.message });
+  }
 });
 
 // 历史单据列表

@@ -369,8 +369,8 @@ async function main() {
   console.log(`✅ 出库记录: ${outboundCount} 条`);
   console.log(`✅ 总计: ${inboundCount + outboundCount} 条出入库记录`);
 
-  // 6.5 挂载单据图片（给前7条入库记录挂虚构送货单）
-  const imgRecords = await pool.query('SELECT id FROM inbound_records ORDER BY id LIMIT 7');
+  // 6.5 挂载单据图片（给YY01前7条入库记录挂虚构送货单）
+  const imgRecords = await pool.query(`SELECT r.id FROM inbound_records r JOIN products p ON p.id=r.product_id WHERE p.project_no='YY01' ORDER BY r.id LIMIT 7`);
   for (let i = 0; i < imgRecords.rows.length; i++) {
     await pool.query('UPDATE inbound_records SET doc_image_path=$1 WHERE id=$2',
       ['/doc-samples/delivery-' + (i + 1) + '.svg', imgRecords.rows[i].id]);

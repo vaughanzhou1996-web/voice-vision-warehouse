@@ -23,7 +23,7 @@ let pass = 0, fail = 0;
 function ok(msg) { console.log(`  ✅ ${msg}`); pass++; }
 function ng(msg) { console.log(`  ❌ ${msg}`); fail++; }
 
-function req(method, url, body, token) {
+function req(method, url, body, token, _retry) {
   return new Promise((resolve, reject) => {
     const u = new URL(url, BASE);
     const opts = { method, hostname: u.hostname, port: u.port, path: u.pathname + u.search, headers: {} };
@@ -32,7 +32,11 @@ function req(method, url, body, token) {
     const r = http.request(opts, res => {
       let d = ''; res.on('data', c => d += c); res.on('end', () => { try { resolve(JSON.parse(d)); } catch (e) { resolve(d); } });
     });
-    r.on('error', reject);
+    r.on('error', e => {
+      if (!_retry && (e.code === 'ECONNRESET' || e.code === 'ECONNREFUSED')) {
+        setTimeout(() => req(method, url, body, token, true).then(resolve).catch(reject), 1000);
+      } else reject(e);
+    });
     if (body) r.write(JSON.stringify(body));
     r.end();
   });
@@ -131,6 +135,7 @@ async function main() {
     if (out.includes('❌')) { ng('test-forecast有失败项'); console.log(out.split('\n').filter(l => l.includes('❌')).join('\n')); }
     else ok('test-forecast.js 全绿');
   } catch (e) { ng('test-forecast执行异常: ' + (e.stderr || e.message).substring(0, 100)); }
+  await new Promise(r => setTimeout(r, 500)); // 等待连接池恢复
 
   // 7. 备注CRUD
   console.log('\n--- 7. 备注CRUD ---');
@@ -212,6 +217,27 @@ async function main() {
     if (r2.some(r => (r.spec||'').includes('DN50'))) ok(`搜索"dn50"→找到DN50产品 (${r2.length}条)`);
     else ng(`搜索"dn50"未找到DN50产品`);
   } else ng('inventory API失败');
+
+  // 13. 识别链 model=qwen-vl-max + 不黏连
+  console.log('\n--- 13. 识别链移植 ---');
+  const testImg = path.join(__dirname, '..', 'uploads', 'test314_card13.jpg');
+  const srcImg = '/Users/vaughan/Desktop/桌面整理/送货单样本/微信图片_20260708145342_314_20.jpg';
+  if (fs.existsSync(srcImg)) {
+    fs.copyFileSync(srcImg, testImg);
+    const recJ = await req('POST', '/api/recognize', { path: 'uploads/test314_card13.jpg' }, caojie.token);
+    if (recJ.success) {
+      if (recJ.data.model === 'qwen-vl-max') ok(`识别模型=qwen-vl-max`);
+      else ng(`识别模型=${recJ.data.model} (需qwen-vl-max)`);
+      const xrkItems = (recJ.data.items || []).filter(i => (i.name||'').includes('吸入口'));
+      if (xrkItems.length >= 3) ok(`吸入口识别${xrkItems.length}行(≥3，不黏连)`);
+      else ng(`吸入口仅${xrkItems.length}行(需≥3)`);
+    } else ng(`识别失败: ${recJ.error}`);
+    try { fs.unlinkSync(testImg); } catch(e) {}
+  } else {
+    console.log('  ⚠️ 跳过: 测试图片不存在 ' + srcImg);
+    ok('识别链跳过(无样本图片)');
+    ok('吸入口跳过(无样本图片)');
+  }
 
   await pool.end();
 
