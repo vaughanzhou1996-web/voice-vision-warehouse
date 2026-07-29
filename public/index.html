@@ -18,6 +18,7 @@
     <div class="form-row"><label>密码</label><input type="password" id="loginPass" class="form-input" placeholder="••••••" onkeydown="if(event.key==='Enter')doLogin()"></div>
     <button class="btn btn-primary" style="width:100%;padding:10px;margin-top:8px;" onclick="doLogin()">登 录</button>
     <p id="loginError" style="color:#e53935;font-size:13px;text-align:center;margin-top:8px;display:none;"></p>
+    <p style="text-align:center;margin-top:12px;"><a href="/mobile.html" style="color:#1976d2;font-size:13px;text-decoration:none;">📱 手机版</a></p>
   </div>
 </div>
 
@@ -93,6 +94,7 @@
       </tr></thead>
       <tbody id="inventoryBody"><tr><td colspan="11" class="loading">加载中...</td></tr></tbody>
     </table>
+    <div id="inventorySummary" style="display:none;justify-content:center;gap:24px;padding:12px 16px;margin-top:8px;background:#f0f7ff;border-radius:8px;font-size:14px;color:#333"></div>
   </div>
 </div>
 

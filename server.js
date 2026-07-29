@@ -27,6 +27,14 @@ const upload = multer({ dest: UPLOAD_DIR, limits: { fileSize: 10*1024*1024 } });
 const { chatText, chatVision, speechToText } = require('./lib/qwen');
 
 const app = express();
+// 移动端UA检测→302跳转mobile.html
+app.get('/', (req, res, next) => {
+  const ua = req.headers['user-agent'] || '';
+  if (/Mobile|Android|iPhone|iPad|iPod/i.test(ua) && !req.query.desktop) {
+    return res.redirect('/mobile.html');
+  }
+  next();
+});
 app.use(express.static(path.join(__dirname, 'public'), { maxAge: 0 }));
 app.use('/uploads', express.static(UPLOAD_DIR, { maxAge: 0 }));
 app.use('/docs', express.static(DOCS_DIR, { maxAge: 0 }));
@@ -52,6 +60,12 @@ app.post('/api/login', async (req, res) => {
     const token = crypto.randomBytes(16).toString('hex');
     tokens[token] = { username: u.username, displayName: u.display_name, role: u.role };
     res.json({ success: true, data: { token, username: u.username, displayName: u.display_name, role: u.role } });
+    // 登录后异步预生成AI报告缓存
+    setImmediate(() => {
+      const http = require('http');
+      const opts = { hostname: '127.0.0.1', port: PORT || 8000, path: '/api/dashboard/report?ship=YY01', headers: { 'Authorization': token } };
+      http.get(opts, r => { r.resume(); }).on('error', () => {});
+    });
   } catch (e) { res.json({ success: false, error: e.message }); }
 });
 
@@ -90,6 +104,7 @@ function getShip(req) {
   const s = req.query.ship;
   return SHIPS.some(sh => sh.project_no === s) ? s : SHIPS[0].project_no;
 }
+function fmtInt(v){const n=parseFloat(v);return isNaN(n)?v:Math.round(n);}
 
 // ====== 记录变更日志 ======
 async function logChange(actionType, productId, productName, productSpec, quantity, qtyBefore, qtyAfter, operator, details, refTable, refId) {
@@ -206,18 +221,27 @@ app.post('/api/inbound/batch', auth, async (req, res) => {
 
 // 出库
 app.post('/api/outbound', auth, async (req, res) => {
+  const client = await pool.connect();
   try {
     const { productId, quantity, date, department, remark } = req.body;
-    const prod = (await pool.query('SELECT name,spec,unit FROM products WHERE id=$1', [productId])).rows[0];
-    const stockBefore = await getStock(productId);
-    const r = await pool.query(
+    const prod = (await client.query('SELECT name,spec,unit FROM products WHERE id=$1', [productId])).rows[0];
+    if (!prod) { res.json({ success: false, error: '产品不存在' }); return; }
+    const stockBefore = (await client.query(`SELECT COALESCE(SUM(i.quantity),0)-COALESCE((SELECT SUM(o.quantity) FROM outbound_records o WHERE o.product_id=$1),0) AS stock FROM inbound_records i WHERE i.product_id=$1`, [productId])).rows[0].stock;
+    if (parseFloat(stockBefore) < parseFloat(quantity)) {
+      res.json({ success: false, error: `库存不足：当前库存${fmtInt(stockBefore)}，请求出库${quantity}` });
+      return;
+    }
+    await client.query('BEGIN');
+    const r = await client.query(
       `INSERT INTO outbound_records (product_id,quantity,date,department,remark,doc_type) VALUES ($1,$2,$3,$4,$5,'出库单') RETURNING *`,
       [productId, quantity, date||new Date(), department||'', remark||'']
     );
-    const stockAfter = await getStock(productId);
+    const stockAfter = (await client.query(`SELECT COALESCE(SUM(i.quantity),0)-COALESCE((SELECT SUM(o.quantity) FROM outbound_records o WHERE o.product_id=$1),0) AS stock FROM inbound_records i WHERE i.product_id=$1`, [productId])).rows[0].stock;
     await logChange('outbound', productId, prod.name, prod.spec, quantity, stockBefore, stockAfter, req.user.displayName, remark||'', 'outbound_records', r.rows[0].id);
+    await client.query('COMMIT');
     res.json({ success: true, data: r.rows[0] });
-  } catch (e) { res.json({ success: false, error: e.message }); }
+  } catch (e) { await client.query('ROLLBACK').catch(()=>{}); res.json({ success: false, error: e.message }); }
+  finally { client.release(); }
 });
 
 // 批量出库
@@ -516,11 +540,26 @@ app.get('/api/dashboard', auth, async (req, res) => {
 });
 
 // 角色化 AI 分析报告（看板用）
+// AI报告缓存（key=role+ship，60秒TTL）
+const _reportCache = new Map();
+function getReportCacheKey(role, ship) { return `${role}:${ship}`; }
+function getCachedReport(role, ship) {
+  const entry = _reportCache.get(getReportCacheKey(role, ship));
+  if (entry && Date.now() - entry.ts < 60000) return entry.report;
+  return null;
+}
+function setReportCache(role, ship, report) {
+  _reportCache.set(getReportCacheKey(role, ship), { report, ts: Date.now() });
+}
+
 app.get('/api/dashboard/report', auth, async (req, res) => {
   try {
     const role = req.user.role;
     const name = req.user.displayName;
     const ship = getShip(req);
+    // 缓存命中
+    const cached = getCachedReport(role, ship);
+    if (cached) { res.json({ success: true, data: { report: cached, role, cached: true } }); return; }
     // 收集真实数据
     const stock = await pool.query(`SELECT COUNT(*) AS total, SUM(CASE WHEN COALESCE(inb.t,0)-COALESCE(outb.t,0)<3 THEN 1 ELSE 0 END) AS low FROM products p LEFT JOIN (SELECT product_id,SUM(quantity) t FROM inbound_records GROUP BY product_id) inb ON p.id=inb.product_id LEFT JOIN (SELECT product_id,SUM(quantity) t FROM outbound_records GROUP BY product_id) outb ON p.id=outb.product_id WHERE p.project_no=$1`, [ship]);
     const today = await pool.query(`SELECT COUNT(*) AS c FROM inbound_records WHERE date=CURRENT_DATE AND product_id IN (SELECT id FROM products WHERE project_no=$1)`, [ship]);
@@ -560,6 +599,7 @@ app.get('/api/dashboard/report', auth, async (req, res) => {
     } catch (e) {
       report = `${name}，您好。当前${ship}库存${stock.rows[0].total}种，告急${stock.rows[0].low}种。${forecastSummary}。${milestoneSummary}。`;
     }
+    setReportCache(role, ship, report);
     res.json({ success: true, data: { report, role } });
   } catch (e) { res.json({ success: false, error: e.message }); }
 });
@@ -734,19 +774,6 @@ app.post('/api/rollback/batch', auth, async (req, res) => {
   } catch (e) { res.json({ success: false, error: e.message }); }
 });
 
-// ====== LLM聊天（百炼 qwen3-max-preview）======
-app.post('/api/chat', auth, async (req, res) => {
-  try {
-    const { message } = req.body;
-    if (!message) return res.json({ success: false, reply: '请输入消息' });
-    const reply = await chatText([
-      {role: 'system', text: '你是库存管理AI助手。回答简洁专业。说出入库请说“入库 产品名 数量单位”或“出库 产品名 数量单位”。'},
-      {role: 'user', text: message}
-    ]);
-    res.json({ success: true, reply });
-  } catch (e) { res.json({ success: false, reply: '❌ '+e.message }); }
-});
-
 // ====== 对话式库存操作（多轮上下文+指代解析+真实执行）======
 const { processMessage } = require('./lib/chat-ops');
 app.post('/api/chat/ops', auth, async (req, res) => {
@@ -784,7 +811,9 @@ app.get('/api/briefing', auth, async (req, res) => {
 
     } else if (user.role === 'leader') {
       // 队长：项目风险视角
-      const planData = JSON.parse(fs.readFileSync(path.join(__dirname, 'data', 'project-plan.json'), 'utf8'));
+      const msAll = JSON.parse(fs.readFileSync(path.join(__dirname, 'data', 'project-milestones.json'), 'utf8'));
+      const statusMap = {done:'已完成',active:'进行中',pending:'未开始'};
+      const planData = Object.entries(msAll).flatMap(([ship, arr]) => arr.map(m => ({...m, project_no: ship, ship: ship==='YY01'?'远洋01':'远洋02', status: statusMap[m.status]||m.status})));
       const now = new Date();
       const upcoming = planData.filter(m => {
         const d = new Date(m.planned_date);
@@ -864,10 +893,13 @@ const CATEGORY_SQL = `
 
 app.get('/api/analysis', auth, async (req, res) => {
   try {
-    // 1. 读取项目计划，取未杧60天节点
-    const planData = JSON.parse(fs.readFileSync(path.join(__dirname, 'data', 'project-plan.json'), 'utf8'));
+    // 1. 读取节点数据（单一数据源 project-milestones.json）
+    const msAll = JSON.parse(fs.readFileSync(path.join(__dirname, 'data', 'project-milestones.json'), 'utf8'));
+    const statusMap = {done:'已完成',active:'进行中',pending:'未开始'};
+    const planData = Object.entries(msAll).flatMap(([ship, arr]) => arr.map(m => ({...m, project_no: ship, ship: ship==='YY01'?'远洋01':'远洋02', status: statusMap[m.status]||m.status})));
+    const ship = getShip(req);
     const now = new Date();
-    const milestones = planData.filter(m => {
+    const milestones = planData.filter(m => m.project_no === ship).filter(m => {
       const d = new Date(m.planned_date + 'T00:00:00');
       const diff = (d - now) / 86400000;
       return diff >= 0 && diff <= 60;

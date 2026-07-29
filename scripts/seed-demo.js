@@ -245,8 +245,9 @@ async function main() {
   const productIds = [];
   const productInfos = [];
   for (const [name, spec, unit, supIdx, category] of PRODUCTS_DEF) {
-    // 70% 给 YY01, 30% 给 YY02
-    const projectNo = Math.random() < 0.7 ? 'YY01' : 'YY02';
+    // 70% 给 YY01, 30% 给 YY02；但含大写型号的产品强制 YY01（保证搜索测试稳定）
+    const forceYY01 = name.includes('O型') || /DN50/i.test(spec);
+    const projectNo = forceYY01 ? 'YY01' : (Math.random() < 0.7 ? 'YY01' : 'YY02');
     const r = await pool.query(
       'INSERT INTO products (name, spec, unit, supplier_id, project_no) VALUES ($1,$2,$3,$4,$5) RETURNING id',
       [name, spec, unit, supplierIds[supIdx], projectNo]

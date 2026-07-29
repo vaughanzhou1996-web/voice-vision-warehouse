@@ -98,6 +98,7 @@ document.addEventListener('keydown',function(e){
   }
 });
 function fmtInt(v){const n=parseFloat(v);return isNaN(n)?v:(Number.isInteger(n)?n:Math.round(n));}
+function escOnclick(s){return (s||'').replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/"/g,'&quot;');}
 function imgFallback(el){el.onerror=null;el.style.display='none';const d=document.createElement('div');d.style.cssText='padding:20px;text-align:center;color:#999;background:#f5f5f5;border-radius:6px;font-size:12px';d.textContent='🖼️ 图片缺失';el.parentNode.insertBefore(d,el.nextSibling);}
 function minimizeAiModal(){
   const modal = document.getElementById('aiConfirmModal');
@@ -181,9 +182,9 @@ async function loadInventory(){
       const s=r.stock;const st=s<5?'color:#e53935;font-weight:700':(s<20?'color:#e65100':'');
       return `<tr><td>${r.supplier_name||'-'}</td><td><strong>${r.name}</strong></td><td>${r.spec||'-'}</td>
         <td>${r.unit}</td><td>${fmtInt(r.total_in)}</td><td>${fmtInt(r.total_out)}</td><td style="${st}">${fmtInt(s)}</td>
-        <td><button class="btn btn-sm btn-outline" onclick="openNotes(${r.id},'${r.name}')" title="备注">📝</button></td>
+        <td><button class="btn btn-sm btn-outline" onclick="openNotes(${r.id},'${escOnclick(r.name)}')" title="备注">📝</button></td>
         <td><button class="btn btn-sm btn-outline" onclick="viewProduct(${r.id})">📄</button></td>
-        <td><button class="btn btn-sm btn-danger" onclick="openOut(${r.id},'${r.name}')">出库</button></td></tr>`;
+        <td><button class="btn btn-sm btn-danger" onclick="openOut(${r.id},'${escOnclick(r.name)}')">出库</button></td></tr>`;
     }).join('');
   } else {
     // 按供应商分组折叠显示
@@ -196,7 +197,7 @@ async function loadInventory(){
     });
     const snames=Object.keys(groups).sort();
     window._supplierNames=snames;
-    if(!window._expandedSuppliers)window._expandedSuppliers={};
+    if(!window._expandedSuppliers){window._expandedSuppliers={};if(snames.length)window._expandedSuppliers[snames[0]]=true;}
     let html='';
     snames.forEach(sn=>{
       const items=groups[sn];
@@ -211,13 +212,19 @@ async function loadInventory(){
           const rowCls=batchMode?' class="batch-row" style="cursor:pointer"':'';
           html+=`<tr${rowCls}>${cb}<td></td><td><strong>${r.name}</strong></td><td>${r.spec||'-'}</td><td>${r.unit}</td>
             <td>${fmtInt(r.total_in)}</td><td>${fmtInt(r.total_out)}</td><td style="${st}">${fmtInt(s)}</td>
-            <td><button class="btn btn-sm btn-outline" onclick="event.stopPropagation();openNotes(${r.id},'${r.name}')" title="备注">📝</button></td>
+            <td><button class="btn btn-sm btn-outline" onclick="event.stopPropagation();openNotes(${r.id},'${escOnclick(r.name)}')" title="备注">📝</button></td>
             <td><button class="btn btn-sm btn-outline" onclick="event.stopPropagation();viewProduct(${r.id})">📄</button></td>
-            <td><button class="btn btn-sm btn-danger" onclick="event.stopPropagation();openOut(${r.id},'${r.name}')">出库</button></td></tr>`;
+            <td><button class="btn btn-sm btn-danger" onclick="event.stopPropagation();openOut(${r.id},'${escOnclick(r.name)}')">出库</button></td></tr>`;
         });
       }
     });
     tbody.innerHTML=html;
+    // 合计卡片
+    const totalItems=filtered.length;
+    const totalStockAll=filtered.reduce((a,b)=>a+parseFloat(b.stock||0),0);
+    const alertCount=filtered.filter(r=>parseFloat(r.stock||0)<5).length;
+    const summaryEl=document.getElementById('inventorySummary');
+    if(summaryEl){summaryEl.style.display='flex';summaryEl.innerHTML=`<span>📦 <b>${totalItems}</b> 种物料</span><span>📊 总库存 <b>${fmtInt(totalStockAll)}</b></span><span style="${alertCount?'color:#e53935':''}">⚠️ 告急 <b>${alertCount}</b> 种</span>`;}
   }
 }
 
@@ -507,7 +514,7 @@ async function loadSupplierList(){
   if(!j.data.length){el.innerHTML='<div class="doc-empty">暂无供应商</div>';return;}
   el.innerHTML=j.data.map(s=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;border:1px solid #eee;border-radius:6px;margin-bottom:4px">
     <span>${s.name}</span>
-    <button class="btn btn-sm btn-danger" onclick="deleteSupplier(${s.id},'${s.name}')">删除</button>
+    <button class="btn btn-sm btn-danger" onclick="deleteSupplier(${s.id},'${escOnclick(s.name)}')">删除</button>
   </div>`).join('');
 }
 async function addSupplier(){
