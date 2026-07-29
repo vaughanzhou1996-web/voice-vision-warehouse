@@ -1067,17 +1067,23 @@ async function loadBriefing(){
 async function uploadImage(i){const f=i.files[0];if(!f)return;
   addMsg('📷 [上传: '+f.name+']','user');
   const fd=new FormData();fd.append('image',f);
+  let _pt1,_pt2,progEl;
+  const clearProg=()=>{clearTimeout(_pt1);clearTimeout(_pt2);if(progEl)progEl.remove();};
   try{
     const j=await(await fetch('api/upload',{method:'POST',headers:{'Authorization':token},body:fd})).json();
     if(!j.success){addMsg('❌ 上传失败: '+j.error,'ai');i.value='';return;}
-    addMsg('📷 正在识别送货单...','ai');
+    // 分段进度反馈
+    progEl=addAiMsg('<span id="recogProgress">📷 正在检测单据字段…</span>');
+    _pt1=setTimeout(()=>{const s=document.getElementById('recogProgress');if(s)s.textContent='🔍 正在提取货品明细（品名/规格/数量）…';},2000);
+    _pt2=setTimeout(()=>{const s=document.getElementById('recogProgress');if(s)s.textContent='📦 正在整理入库清单…';},5000);
     const recog=await(await fetch('api/recognize',{method:'POST',headers:{'Authorization':token,'Content-Type':'application/json'},body:JSON.stringify({path:j.data.path})})).json();
+    clearProg();
     if(recog.success && recog.data && recog.data.items && recog.data.items.length>0){
       window._pendingRecognition=recog.data;
       window._pendingImagePath=recog.data.docPath||'';
       showAIReviewModal();
     } else addMsg('❌ 识别失败: '+(recog.error||'请重试'),'ai');
-  }catch(e){addMsg('❌ 连接超时，请重试或手工录入','ai');}
+  }catch(e){clearProg();addMsg('❌ 连接超时，请重试或手工录入','ai');}
   i.value='';
 }
 
