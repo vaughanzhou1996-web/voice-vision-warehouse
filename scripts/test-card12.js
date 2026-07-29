@@ -186,6 +186,19 @@ async function main() {
   if (noteRows.length >= 2) ok(`两类产品各有预埋备注`);
   else ng(`预埋备注产品不足2类`);
 
+  // 10. /api/documents 返回≥7条且文件存在
+  console.log('\n--- 10. 历史单据API数据源 ---');
+  const docsJ = await req('GET', '/api/documents?ship=YY01', null, caojie.token);
+  if (docsJ.success && docsJ.data.length >= 7) ok(`/api/documents 返回${docsJ.data.length}条 (≥7)`);
+  else ng(`/api/documents 返回${docsJ.data?.length || 0}条 (需≥7)`);
+  let docFileOk = 0;
+  for (const d of (docsJ.data || [])) {
+    const fp = path.join(__dirname, '..', 'public', d.doc_image_path);
+    if (fs.existsSync(fp)) docFileOk++;
+  }
+  if (docsJ.data && docFileOk === docsJ.data.length) ok(`所有${docFileOk}个单据图片文件存在`);
+  else ng(`${(docsJ.data?.length || 0) - docFileOk}个单据图片缺失`);
+
   await pool.end();
 
   // 汇总

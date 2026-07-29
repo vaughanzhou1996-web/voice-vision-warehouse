@@ -824,7 +824,7 @@ async function showHistoryDocs(){
   const body = document.getElementById('historyDocsBody');
   body.innerHTML = '加载中...';
   try {
-    const r = await fetch('api/documents', {headers: getHeaders()});
+    const r = await fetch(apiUrl('api/documents'), {headers: getHeaders()});
     const j = await r.json();
     if (!j.success || !j.data.length) {
       body.innerHTML = '<div style="text-align:center;padding:40px;color:#999">还没有入库单据，拍照入库后会显示在这里</div>';
@@ -832,14 +832,13 @@ async function showHistoryDocs(){
     }
     let html = '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px">';
     for (const doc of j.data) {
-      const date = new Date(doc.created).toLocaleString('zh-CN');
-      const sizeKB = Math.round(doc.size / 1024);
-      const fullPath = doc.path.startsWith('/docs/') ? '/inventory' + doc.path : doc.path;
-      html += `<div style="border:1px solid #e0f2fe;border-radius:8px;overflow:hidden;background:#fff;cursor:pointer" onclick="window.open('${fullPath}','_blank')">
-        <img src="${fullPath}" style="width:100%;height:140px;object-fit:cover" loading="lazy" onerror="imgFallback(this)">
+      const date = doc.date || new Date(doc.created_at).toLocaleDateString('zh-CN');
+      const imgPath = doc.doc_image_path;
+      html += `<div style="border:1px solid #e0f2fe;border-radius:8px;overflow:hidden;background:#fff;cursor:pointer" onclick="window.open('${imgPath}','_blank')">
+        <img src="${imgPath}" style="width:100%;height:140px;object-fit:cover" loading="lazy" onerror="imgFallback(this)">
         <div style="padding:8px;font-size:11px;color:#666">
+          <div style="font-weight:600;color:#333">${doc.product_name||'未知产品'}</div>
           <div>${date}</div>
-          <div style="color:#999">${sizeKB} KB</div>
         </div>
       </div>`;
     }

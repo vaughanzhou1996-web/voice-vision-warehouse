@@ -338,20 +338,15 @@ app.post('/api/recognize', auth, async (req, res) => {
 // 历史单据列表
 app.get('/api/documents', auth, async (req, res) => {
   try {
-    const files = fs.readdirSync(DOCS_DIR)
-      .filter(f => f.endsWith('.jpg'))
-      .map(f => {
-        const stat = fs.statSync(path.join(DOCS_DIR, f));
-        return {
-          id: f.replace('.jpg', ''),
-          path: '/inventory/docs/' + f,
-          created: stat.mtime,
-          size: stat.size
-        };
-      })
-      .sort((a, b) => b.created - a.created)
-      .slice(0, 50);
-    res.json({ success: true, data: files });
+    const ship = getShip(req);
+    const r = await pool.query(`
+      SELECT r.id, r.doc_image_path, r.created_at, r.date, p.name AS product_name, p.spec AS product_spec
+      FROM inbound_records r
+      LEFT JOIN products p ON p.id = r.product_id
+      WHERE r.doc_image_path IS NOT NULL AND r.doc_image_path != ''
+        AND p.project_no = $1
+      ORDER BY r.created_at DESC LIMIT 50`, [ship]);
+    res.json({ success: true, data: r.rows });
   } catch (e) { res.json({ success: false, error: e.message }); }
 });
 
