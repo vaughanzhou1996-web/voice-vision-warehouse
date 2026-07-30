@@ -42,9 +42,10 @@ function req(method, url, body, token, _retry) {
   });
 }
 
-async function login(username) {
+async function login(username, ship) {
   const j = await req('POST', '/api/login', { username, password: 'demo1234' });
   if (!j.success) throw new Error(`登录失败: ${username} - ${j.error}`);
+  await req('POST', '/api/select-ship', { ship: ship || 'YY01' }, j.data.token);
   return j.data;
 }
 
@@ -106,7 +107,7 @@ async function main() {
   const msJ = await req('GET', '/api/milestones?ship=YY01', null, caojie.token);
   if (msJ.success && msJ.data.length >= 8) ok(`YY01节点${msJ.data.length}个 (≥8)`);
   else ng(`YY01节点${msJ.data?.length || 0}个 (需≥8)`);
-  const msJ2 = await req('GET', '/api/milestones?ship=YY02', null, caojie.token);
+  const msJ2 = await req('GET', '/api/milestones?ship=YY02', null, (await login('caojie', 'YY02')).token);
   if (msJ2.success && msJ2.data.length >= 3) ok(`YY02节点${msJ2.data.length}个 (≥3)`);
   else ng(`YY02节点不足`);
 

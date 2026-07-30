@@ -160,6 +160,7 @@ input,select,textarea{font-size:16px!important}/* 防iOS缩放 */
   <button onclick="openCamera()"><span class="icon">📷</span>拍照</button>
   <button onclick="openVoice()"><span class="icon">🎤</span>语音</button>
   <button onclick="switchTab('recent')"><span class="icon">📋</span>最近</button>
+  <button onclick="switchTab('iterlog')"><span class="icon">📝</span>日志</button>
 </div>
 
 <!-- ====== 供应商筛选弹窗 ====== -->
@@ -268,6 +269,8 @@ async function doLogin(){
   if(!j.success){$_('loginError').textContent=j.error;$_('loginError').style.display='block';return;}
   token=j.data.token;displayName=j.data.displayName;
   localStorage.setItem('m_token',token);localStorage.setItem('m_user',displayName);
+  // 绑定船舶（多租户鉴权）
+  fetch('api/select-ship',{method:'POST',headers:{'Authorization':token,'Content-Type':'application/json'},body:JSON.stringify({ship:'YY01'})}).catch(function(){});
   $_('loginPage').style.display='none';$_('mainApp').style.display='block';
   $_('userName').textContent=displayName;
   loadStock();loadSuppliers();
@@ -278,6 +281,7 @@ function doLogout(){localStorage.clear();location.reload()}
 (function(){
   var t=localStorage.getItem('m_token'),u=localStorage.getItem('m_user');
   if(t){token=t;displayName=u||'';
+    fetch('api/select-ship',{method:'POST',headers:{'Authorization':token,'Content-Type':'application/json'},body:JSON.stringify({ship:'YY01'})}).catch(function(){});
     fetch('api/inventory',{headers:{'Authorization':token}}).then(r=>r.json()).then(d=>{
       if(d.success){$_('loginPage').style.display='none';$_('mainApp').style.display='block';$_('userName').textContent=displayName;loadStock();loadSuppliers();}
     }).catch(function(){});
@@ -509,6 +513,25 @@ function switchTab(tab){
     document.querySelectorAll('.bottom-nav button')[3].classList.add('active');
     loadRecent();
   }
+  else if(tab==='iterlog'){
+    document.querySelectorAll('.bottom-nav button')[4].classList.add('active');
+    loadIterLog();
+  }
+}
+async function loadIterLog(){
+  $_('stockList').innerHTML='<div class="loading">加载中…</div>';
+  try{
+    var data=await(await fetch('data/iteration-log.json')).json();
+    $_('stockList').innerHTML='<div style="padding:12px 0;font-size:15px;font-weight:600">📋 曹姐反馈迭代记录</div>'+data.map(function(item){
+      var icon=item.fix&&item.fix.includes('修复')?'🐞':item.fix&&item.fix.includes('上线')?'✅':'🔧';
+      return '<div class="stock-card" style="border-left:3px solid #3370ff;margin-bottom:10px;padding:12px;">'+
+        '<div style="font-size:13px;font-weight:600;color:#333">'+icon+' '+item.date+' · '+item.source+'</div>'+
+        '<div style="font-size:13px;color:#555;margin:6px 0 4px">“'+item.problem+'”</div>'+
+        '<div style="font-size:12px;color:#3370ff">→ '+item.fix+'</div>'+
+        (item.lesson?'<div style="font-size:11px;color:#999;margin-top:4px;text-align:right">'+item.lesson+'</div>':'')+
+        '</div>';
+    }).join('');
+  }catch(e){$_('stockList').innerHTML='<div class="loading">加载失败</div>';}
 }
 async function loadRecent(){
   var j=await(await fetch('api/changelog',{headers:{'Authorization':token}})).json();

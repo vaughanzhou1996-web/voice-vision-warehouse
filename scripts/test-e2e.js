@@ -45,9 +45,11 @@ function rawReq(method, urlPath, headers) {
     r.end();
   });
 }
-async function login(username) {
+async function login(username, ship) {
   const { body: j } = await req('POST', '/api/login', { username, password: 'demo1234' });
   if (!j.success) throw new Error(`登录失败: ${username}`);
+  // 绑定船舶
+  await req('POST', '/api/select-ship', { ship: ship || 'YY01' }, j.data.token);
   return j.data;
 }
 
@@ -299,6 +301,41 @@ async function main() {
   const clR = await req('GET', '/api/changelog?ship=YY01', null, users.caojie.token);
   if (clR.body.success && clR.body.data.length > 0 && 'department' in clR.body.data[0]) ok('changelog API含department字段');
   else ng('changelog API缺少department字段');
+
+  // 16. 卡18 鉴权+缓存+重置+迭代日志
+  console.log('\n--- 16. 卡18 鉴权+缓存+重置+迭代日志 ---');
+  // 16a. YY01 token 查 YY02 → 403
+  const crossShip = await req('GET', '/api/inventory?ship=YY02', null, users.caojie.token);
+  if (crossShip.status === 403 && crossShip.body.error && crossShip.body.error.includes('无权')) ok('YY01 token查YY02→403');
+  else ng(`跨船访问未拦截: status=${crossShip.status}`);
+  // 16b. demo/reset 重置
+  const resetR = await req('POST', '/api/demo/reset', {}, users.caojie.token);
+  if (resetR.body.success) ok('demo/reset执行成功');
+  else ng('demo/reset失败: ' + (resetR.body.error || ''));
+  // 16c. 重置后库存恢复
+  const invAfter = await req('GET', '/api/inventory?ship=YY01', null, users.caojie.token);
+  const invCount = invAfter.body.success ? invAfter.body.data.length : 0;
+  if (invCount >= 40) ok(`重置后YY01库存${invCount}项(≥40)`);
+  else ng(`重置后库存仅${invCount}项`);
+  // 16d. 更新日志弹窗可打开(桌面HTML含 overlay)
+  if (deskHtml.includes('iterLogOverlay') && deskHtml.includes('openIterationLog')) ok('桌面更新日志弹窗存在');
+  else ng('桌面缺少更新日志弹窗');
+  // 16e. 更新日志≥20条
+  const iterData = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'data', 'iteration-log.json'), 'utf8'));
+  if (iterData.length >= 20) ok(`迭代日志${iterData.length}条(≥20)`);
+  else ng(`迭代日志仅${iterData.length}条`);
+  // 16f. 手机版含迭代日志Tab
+  if (mobHtml.includes('iterlog') && mobHtml.includes('loadIterLog')) ok('手机版含迭代日志Tab');
+  else ng('手机版缺少迭代日志');
+  // 16g. 识别缓存机制存在
+  const srvCode = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
+  if (srvCode.includes('_recogCache') && srvCode.includes('getRecogCache')) ok('识别缓存机制存在');
+  else ng('缺少识别缓存');
+  // 16h. test-card12 不回潮
+  try {
+    execSync('node scripts/test-card12.js', { cwd: path.join(__dirname, '..'), timeout: 60000, stdio: 'pipe' });
+    ok('test-card12.js全绿');
+  } catch (e) { ng('test-card12.js有失败'); }
 
   // 汇总
   console.log(`\n═══ 结果: ${pass} 通过 / ${fail} 失败 ═══`);

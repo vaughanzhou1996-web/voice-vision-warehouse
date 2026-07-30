@@ -36,6 +36,8 @@ async function showShipSelect(){
 }
 function selectShip(ship){
   currentShip=ship; localStorage.setItem('currentShip',ship);
+  // 绑定船舶到 token（多租户鉴权）
+  fetch('api/select-ship',{method:'POST',headers:{'Authorization':token,'Content-Type':'application/json'},body:JSON.stringify({ship})}).catch(()=>{});
   document.getElementById('shipSelectPage').style.display='none';
   document.getElementById('mainApp').style.display='block';
   document.getElementById('userName').textContent=displayName;
@@ -48,6 +50,7 @@ function selectShip(ship){
 function switchShip(ship){
   if(ship===currentShip)return;
   currentShip=ship; localStorage.setItem('currentShip',ship);
+  fetch('api/select-ship',{method:'POST',headers:{'Authorization':token,'Content-Type':'application/json'},body:JSON.stringify({ship})}).catch(()=>{});
   updateShipPills();
   const name=(shipsList.find(s=>s.project_no===ship)||{}).name||ship;
   showToast('已切换到 '+name, 2000);
@@ -1563,4 +1566,23 @@ async function sendReconMail(to){
     if(j.success) addReconMsg(j.reply, 'ai');
     else alert('发送失败：'+j.error);
   } catch(e){ alert('网络错误'); }
+}
+
+// ====== 迭代记录弹窗 ======
+async function openIterationLog(){
+  document.getElementById('iterLogOverlay').style.display='block';
+  const list=document.getElementById('iterLogList');
+  list.innerHTML='<div style="color:#999;padding:20px;text-align:center">加载中…</div>';
+  try{
+    const data=await(await fetch('data/iteration-log.json')).json();
+    list.innerHTML=data.map(function(item){
+      const icon=item.fix&&item.fix.includes('修复')?'🐞':item.fix&&item.fix.includes('上线')?'✅':'🔧';
+      return '<div style="border-left:3px solid #3370ff;padding:10px 14px;margin-bottom:12px;border-radius:8px;background:#fafbfc;">'+
+        '<div style="font-size:13px;color:#333;font-weight:600;">'+icon+' '+item.date+' · '+item.source+'反馈</div>'+
+        '<div style="font-size:13px;color:#555;margin:6px 0 4px;">“'+item.problem+'”</div>'+
+        '<div style="font-size:12px;color:#3370ff;">→ '+item.fix+'</div>'+
+        (item.lesson?'<div style="font-size:11px;color:#999;margin-top:4px;text-align:right;">'+item.lesson+'</div>':'')+
+        '</div>';
+    }).join('');
+  }catch(e){list.innerHTML='<div style="color:#e53935;padding:20px;">加载失败</div>';}
 }

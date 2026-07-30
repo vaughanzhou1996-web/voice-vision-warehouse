@@ -36,6 +36,7 @@ app.get('/', (req, res, next) => {
   next();
 });
 app.use(express.static(path.join(__dirname, 'public'), { maxAge: 0 }));
+app.use('/data', express.static(path.join(__dirname, 'data'), { maxAge: 0 }));
 app.use('/uploads', express.static(UPLOAD_DIR, { maxAge: 0 }));
 app.use('/docs', express.static(DOCS_DIR, { maxAge: 0 }));
 app.use(express.json({ limit: '10mb' }));
@@ -74,6 +75,19 @@ app.post('/api/logout', (req, res) => {
   res.json({ success: true });
 });
 
+// 演示数据一键重置（限指定角色）
+app.post('/api/demo/reset', auth, async (req, res) => {
+  const allowedRoles = ['caojie', 'hezong', 'zhangwei', 'chenjun'];
+  if (!allowedRoles.includes(req.user.username)) return res.status(403).json({ success: false, error: '无权重置' });
+  try {
+    const { execSync } = require('child_process');
+    execSync('node scripts/reset-demo.js', { cwd: __dirname, timeout: 30000, stdio: 'pipe' });
+    res.json({ success: true, message: '演示数据已重置' });
+  } catch (e) {
+    res.json({ success: false, error: '重置失败: ' + e.message });
+  }
+});
+
 // 注册
 app.post('/api/register', async (req, res) => {
   try {
@@ -95,6 +109,24 @@ function auth(req, res, next) {
   req.user = user;
   next();
 }
+
+// 多租户鉴权：校验 token 绑定的 project_no 与请求 ?ship= 一致
+function authShip(req, res, next) {
+  const ship = req.query.ship;
+  if (!ship) return next(); // 无 ship 参数的路由不检查
+  if (!req.user.project_no) return next(); // 尚未绑定船舶（select-ship 之前）
+  if (req.user.project_no !== ship) return res.status(403).json({ success: false, error: '无权访问该船舶数据' });
+  next();
+}
+
+// 绑定船舶到 token
+app.post('/api/select-ship', auth, (req, res) => {
+  const { ship } = req.body;
+  if (!SHIPS.some(s => s.project_no === ship)) return res.json({ success: false, error: '无效船舶' });
+  const token = req.headers.authorization;
+  tokens[token].project_no = ship;
+  res.json({ success: true });
+});
 
 // 船舶配置（数据驱动）
 const SHIPS = JSON.parse(fs.readFileSync(path.join(__dirname, 'data', 'ships.json'), 'utf8'));
@@ -124,6 +156,22 @@ async function getStock(productId) {
 }
 
 // ====== API（全部需要登录）======
+// 全局 auth + authShip 中间件（排除 login/logout/select-ship/ships/register_supplier）
+const _noAuthPaths = ['/api/login', '/api/logout', '/api/select-ship', '/api/ships', '/api/register_supplier'];
+app.use('/api', (req, res, next) => {
+  if (_noAuthPaths.includes(req.path)) return next();
+  // 内联 auth
+  const token = req.headers.authorization;
+  const user = tokens[token];
+  if (!user) return res.status(401).json({ success: false, error: '未登录' });
+  req.user = user;
+  // 内联 authShip
+  const ship = req.query.ship;
+  if (ship && user.project_no && user.project_no !== ship) {
+    return res.status(403).json({ success: false, error: '无权访问该船舶数据' });
+  }
+  next();
+});
 
 // 库存总览
 app.get('/api/inventory', auth, async (req, res) => {
@@ -274,10 +322,34 @@ app.post('/api/upload', auth, upload.single('image'), async (req, res) => {
 });
 
 // 识别图片
+// ====== 识别结果缓存（MD5(image) → result, TTL 24h）======
+const _recogCache = new Map();
+function getRecogCache(imgPath) {
+  try {
+    const absPath = imgPath.startsWith('/uploads/') ? path.join(__dirname, imgPath) : imgPath;
+    const buf = fs.readFileSync(absPath);
+    const md5 = crypto.createHash('md5').update(buf).digest('hex');
+    const entry = _recogCache.get(md5);
+    if (entry && Date.now() - entry.ts < 86400000) return entry.result;
+  } catch(e) {}
+  return null;
+}
+function setRecogCache(imgPath, result) {
+  try {
+    const absPath = imgPath.startsWith('/uploads/') ? path.join(__dirname, imgPath) : imgPath;
+    const buf = fs.readFileSync(absPath);
+    const md5 = crypto.createHash('md5').update(buf).digest('hex');
+    _recogCache.set(md5, { result, ts: Date.now() });
+  } catch(e) {}
+}
+
 app.post('/api/recognize', auth, async (req, res) => {
   try {
     const { path: imgPath } = req.body;
     if (!imgPath) return res.json({ success: false, error: '缺少图片路径' });
+    // 缓存命中直接返回
+    const cached = getRecogCache(imgPath);
+    if (cached) return res.json({ success: true, data: cached, cached: true });
     
     // 校验：排除假数据
     function isValidResult(info) {
@@ -413,7 +485,7 @@ app.post('/api/recognize', auth, async (req, res) => {
         info.docPath = '/docs/' + docId + '.jpg';
         info.docPathPublic = '/inventory/docs/' + docId + '.jpg';
       } catch (e) { console.log('save doc failed:', e.message); }
-      
+      setRecogCache(imgPath, info);
       res.json({ success: true, data: info });
     } else {
       res.json({ success: false, error: '未能识别出货品信息，请尝试手工录入' });
