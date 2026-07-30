@@ -200,6 +200,68 @@ async function main() {
     else ok('test-forecast.js全绿');
   } catch (e) { ng('test-forecast异常'); }
 
+  // 14. 卡16: 手机端出库+编辑+识别进度
+  console.log('\n--- 14. 卡16 手机端功能 ---');
+  // 14a. 出库正常
+  const invR2 = await req('GET', '/api/inventory?ship=YY01', null, users.caojie.token);
+  const prod2 = invR2.body.data && invR2.body.data.find(r => r.stock >= 3);
+  if (prod2) {
+    const obR = await req('POST', '/api/outbound', { productId: prod2.id, quantity: 1, date: '2026-07-27' }, users.caojie.token);
+    if (obR.body.success) ok('手机端出库正常(1件)');
+    else ng('出库失败: ' + obR.body.error);
+  } else ng('无库存≥3的产品可测出库');
+  // 14b. 出库超额拒绝
+  if (prod2) {
+    const obR2 = await req('POST', '/api/outbound', { productId: prod2.id, quantity: 99999, date: '2026-07-27' }, users.caojie.token);
+    if (!obR2.body.success && (obR2.body.error || '').includes('库存不足')) ok('出库超额被拒绝');
+    else ng('出库超额未拒绝: ' + JSON.stringify(obR2.body));
+  }
+  // 14c. edit-preview 无合并
+  const invR3 = await req('GET', '/api/inventory?ship=YY01', null, users.caojie.token);
+  const editProd = invR3.body.data && invR3.body.data[0];
+  if (editProd) {
+    const epR = await req('POST', '/api/products/edit-preview', { edits: [{ id: editProd.id, name: editProd.name + '_test', spec: 'UNIQUE_SPEC_999', unit: '个' }] }, users.caojie.token);
+    if (epR.body.success && epR.body.merges.length === 0) ok('edit-preview无合并(唯一规格)');
+    else ng('edit-preview异常: ' + JSON.stringify(epR.body));
+  } else ng('无产品可测edit-preview');
+  // 14d. edit-preview 触发合并
+  if (invR3.body.data && invR3.body.data.length >= 2) {
+    const p1 = invR3.body.data[0], p2 = invR3.body.data[1];
+    const epR2 = await req('POST', '/api/products/edit-preview', { edits: [{ id: p1.id, name: p2.name, spec: p2.spec || '', unit: p1.unit }] }, users.caojie.token);
+    if (epR2.body.success && epR2.body.merges.length >= 1) ok('edit-preview检测到合并冲突');
+    else ng('edit-preview未检测合并: ' + JSON.stringify(epR2.body));
+  }
+  // 14e. edit-apply 普通编辑
+  if (editProd) {
+    const eaR = await req('POST', '/api/products/edit-apply', { edits: [{ id: editProd.id, name: editProd.name, spec: (editProd.spec || '') + '_edited', unit: editProd.unit }], mergeDecisions: [] }, users.caojie.token);
+    if (eaR.body.success) ok('edit-apply普通编辑成功');
+    else ng('edit-apply失败: ' + eaR.body.error);
+    // 还原
+    await req('POST', '/api/products/edit-apply', { edits: [{ id: editProd.id, name: editProd.name, spec: editProd.spec || '', unit: editProd.unit }], mergeDecisions: [] }, users.caojie.token);
+  }
+  // 14f. mobile.html 含三段进度文案
+  const mobHtml = await new Promise((resolve, reject) => {
+    const u = new URL('/mobile.html', BASE);
+    http.get({ hostname: u.hostname, port: u.port, path: u.pathname }, res => {
+      let d = ''; res.on('data', c => d += c); res.on('end', () => resolve(d));
+    }).on('error', reject);
+  });
+  const has3stages = mobHtml.includes('正在检测单据字段') && mobHtml.includes('正在提取货品明细') && mobHtml.includes('正在整理入库清单');
+  if (has3stages) ok('mobile.html含三段进度文案');
+  else ng('mobile.html缺少三段进度文案');
+  // 14g. mobile.html 含可编辑确认弹窗
+  const hasEditable = mobHtml.includes('re-name') && mobHtml.includes('re-spec') && mobHtml.includes('re-qty') && mobHtml.includes('re-del');
+  if (hasEditable) ok('mobile.html含可编辑识别行(品名/规格/数量/删除)');
+  else ng('mobile.html缺少可编辑识别行');
+  // 14h. mobile.html 含出库sheet
+  const hasOutbound = mobHtml.includes('outboundSheet') && mobHtml.includes('submitOutbound');
+  if (hasOutbound) ok('mobile.html含出库弹窗');
+  else ng('mobile.html缺少出库弹窗');
+  // 14i. mobile.html 含编辑模式
+  const hasEdit = mobHtml.includes('toggleEditMode') && mobHtml.includes('edit-preview') && mobHtml.includes('mergeSheet');
+  if (hasEdit) ok('mobile.html含编辑模式+合并弹窗');
+  else ng('mobile.html缺少编辑模式');
+
   // 汇总
   console.log(`\n═══ 结果: ${pass} 通过 / ${fail} 失败 ═══`);
   process.exit(fail > 0 ? 1 : 0);

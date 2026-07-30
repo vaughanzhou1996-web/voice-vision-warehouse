@@ -87,6 +87,28 @@ input,select,textarea{font-size:16px!important}/* 防iOS缩放 */
 .recog-item .name{font-weight:500}
 .recog-item .qty{color:#3370ff}
 
+/* ====== 可编辑识别行 ====== */
+.recog-edit-row{display:flex;gap:6px;align-items:center;padding:8px 0;border-bottom:1px solid #f0f0f0}
+.recog-edit-row input{padding:8px;border:1px solid #ddd;border-radius:8px;font-size:14px;outline:none}
+.recog-edit-row input:focus{border-color:#3370ff}
+.recog-edit-row .re-name{flex:2;min-width:0}
+.recog-edit-row .re-spec{flex:2;min-width:0}
+.recog-edit-row .re-qty{width:50px;text-align:center}
+.recog-edit-row .re-del{width:32px;height:32px;border:none;background:#fee;color:#e53935;border-radius:8px;font-size:16px;cursor:pointer;flex-shrink:0}
+
+/* ====== 库存卡片操作按钮 ====== */
+.stock-card .card-actions{display:flex;gap:4px;margin-left:8px;flex-shrink:0}
+.stock-card .card-actions button{padding:6px 10px;border:1px solid #ddd;border-radius:8px;background:#fff;font-size:12px;cursor:pointer;white-space:nowrap}
+.stock-card .card-actions .btn-out{border-color:#ff9800;color:#ff9800}
+.stock-card .card-actions .btn-out:active{background:#fff3e0}
+
+/* ====== 编辑模式 ====== */
+.edit-input{width:100%;padding:6px 8px;border:1px solid #3370ff;border-radius:6px;font-size:13px;box-sizing:border-box}
+.edit-bar{display:flex;gap:8px;padding:8px 16px;background:#e3f2fd;border-bottom:1px solid #90caf9}
+.edit-bar button{padding:8px 14px;border-radius:8px;border:none;font-size:13px;font-weight:600;cursor:pointer}
+.edit-bar .btn-confirm{background:#3370ff;color:#fff}
+.edit-bar .btn-cancel{background:#fff;color:#333;border:1px solid #ddd}
+
 /* ====== Toast ====== */
 #toastEl{position:fixed;top:60px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,.8);color:#fff;padding:10px 24px;border-radius:10px;font-size:14px;z-index:9999;transition:opacity .3s;pointer-events:none}
 
@@ -122,6 +144,11 @@ input,select,textarea{font-size:16px!important}/* 防iOS缩放 */
   <div class="search-bar">
     <input type="text" id="searchInput" placeholder="🔍 搜索产品..." oninput="loadStock()">
     <button class="filter-btn" onclick="showSupplierFilter()" id="filterBtn">🏢</button>
+    <button class="filter-btn" onclick="toggleEditMode()" id="editBtn" title="编辑模式">✏️</button>
+  </div>
+  <div class="edit-bar" id="editBar" style="display:none">
+    <button class="btn-confirm" onclick="submitEdit()">✅ 确认编辑</button>
+    <button class="btn-cancel" onclick="cancelEdit()">取消</button>
   </div>
 
   <div id="stockList"><div class="loading">加载中...</div></div>
@@ -193,10 +220,34 @@ input,select,textarea{font-size:16px!important}/* 防iOS缩放 */
 <div class="modal-overlay" id="aiConfirmSheet">
   <div class="sheet">
     <h3>📥 确认入库</h3>
+    <div class="field"><label>供应商</label><input type="text" id="aiSupplierInput" placeholder="供应商名称"></div>
     <div id="aiItems"></div>
-    <div id="aiSupplier" style="margin-top:8px;color:#888;font-size:13px"></div>
     <button class="btn-block btn-primary" onclick="confirmAIInbound()" style="margin-top:12px">✅ 确认入库</button>
     <button class="btn-block btn-outline" style="margin-top:6px" onclick="hideSheet('aiConfirmSheet')">取消</button>
+  </div>
+</div>
+
+<!-- ====== 出库弹窗 ====== -->
+<div class="modal-overlay" id="outboundSheet">
+  <div class="sheet">
+    <h3>📤 出库</h3>
+    <div class="field"><label>产品</label><input type="text" id="obProdName" readonly style="background:#f5f5f5"></div>
+    <div class="field"><label>当前库存</label><input type="text" id="obStock" readonly style="background:#f5f5f5"></div>
+    <div class="field"><label>出库数量</label><input type="number" id="obQty" min="1" value="1"></div>
+    <div class="field"><label>备注（可选）</label><input type="text" id="obRemark" placeholder="选填"></div>
+    <button class="btn-block btn-primary" onclick="submitOutbound()">✅ 确认出库</button>
+    <button class="btn-block btn-outline" style="margin-top:6px" onclick="hideSheet('outboundSheet')">取消</button>
+  </div>
+</div>
+
+<!-- ====== 编辑合并确认弹窗 ====== -->
+<div class="modal-overlay" id="mergeSheet">
+  <div class="sheet">
+    <h3>⚠️ 检测到重复产品</h3>
+    <p style="color:#888;font-size:13px;margin-bottom:12px">以下编辑将导致产品合并，库存记录将归并到目标产品：</p>
+    <div id="mergeList"></div>
+    <button class="btn-block btn-primary" onclick="applyEditWithMerge()" style="margin-top:12px">✅ 确认合并并保存</button>
+    <button class="btn-block btn-outline" style="margin-top:6px" onclick="hideSheet('mergeSheet')">取消返回编辑</button>
   </div>
 </div>
 
@@ -231,6 +282,7 @@ function doLogout(){localStorage.clear();location.reload()}
 })();
 
 // ====== 库存列表 ======
+var _editMode=false, _editData={};
 async function loadStock(){
   try{
     const q=$_('searchInput').value.trim();
@@ -238,16 +290,29 @@ async function loadStock(){
     var j=await(await fetch(url,{headers:{'Authorization':token}})).json();
     if(!j.success){$_('stockList').innerHTML='<div class="loading">加载失败</div>';return;}
     var data=j.data;
-    if(q)data=data.filter(r=>r.name.includes(q)||(r.spec||'').includes(q)||(r.supplier_name||'').includes(q));
+    if(q)data=data.filter(function(r){return r.name.toLowerCase().includes(q.toLowerCase())||(r.spec||'').toLowerCase().includes(q.toLowerCase())||(r.supplier_name||'').toLowerCase().includes(q.toLowerCase());});
     if(!data.length){$_('stockList').innerHTML='<div class="loading">📭 无数据</div>';return;}
-    $_('stockList').innerHTML=data.map(r=>{
-      var s=r.stock;var cls=s<5?'low':'';
-      return '<div class="stock-card" onclick="openInbound('+r.id+',\''+r.name+'\')">'+
-        '<div class="info"><div class="name">'+r.name+'</div>'+
-        '<div class="spec">'+(r.spec||'')+'</div>'+
-        '<div class="supplier">'+(r.supplier_name||'')+'</div></div>'+
-        '<div class="qty '+cls+'">'+s+' <span class="unit">'+r.unit+'</span></div></div>';
-    }).join('');
+    if(_editMode){
+      // 编辑模式：用内存中的编辑值
+      $_('stockList').innerHTML=data.map(function(r){
+        var ed=_editData[r.id]||{name:r.name,spec:r.spec||''};
+        return '<div class="stock-card" style="flex-wrap:wrap">'+
+          '<div style="width:100%;display:flex;gap:6px;margin-bottom:6px">'+
+          '<input class="edit-input" style="flex:1" value="'+ed.name.replace(/"/g,'&quot;')+'" data-id="'+r.id+'" data-field="name" oninput="trackEdit(this)">'+
+          '<input class="edit-input" style="flex:1" value="'+ed.spec.replace(/"/g,'&quot;')+'" data-id="'+r.id+'" data-field="spec" oninput="trackEdit(this)"></div>'+
+          '<div class="supplier">'+(r.supplier_name||'')+' | 库存:'+r.stock+' '+r.unit+'</div></div>';
+      }).join('');
+    } else {
+      $_('stockList').innerHTML=data.map(function(r){
+        var s=r.stock;var cls=s<5?'low':'';
+        return '<div class="stock-card">'+
+          '<div class="info" onclick="openInbound('+r.id+',\''+r.name.replace(/'/g,"\\'")+'\')"><div class="name">'+r.name+'</div>'+
+          '<div class="spec">'+(r.spec||'')+'</div>'+
+          '<div class="supplier">'+(r.supplier_name||'')+'</div></div>'+
+          '<div class="qty '+cls+'">'+s+' <span class="unit">'+r.unit+'</span></div>'+
+          '<div class="card-actions"><button class="btn-out" onclick="event.stopPropagation();openOutbound('+r.id+',\''+r.name.replace(/'/g,"\\'")+'\','+s+')">📤出库</button></div></div>';
+      }).join('');
+    }
   }catch(e){$_('stockList').innerHTML='<div class="loading">加载失败</div>'}
 }
 
@@ -368,36 +433,57 @@ function handleVoiceCommand(text){
 function openCamera(){showSheet('cameraSheet');$_('recogResult').innerHTML='';}
 async function uploadForRecog(input){
   var f=input.files[0];if(!f)return;
-  $_('recogResult').innerHTML='<div class="loading">⏳ 识别中...</div>';
+  // 三段进度轮播
+  $_('recogResult').innerHTML='<div class="loading" id="recogProgress">📷 正在检测单据字段…</div>';
+  var _pt1=setTimeout(function(){var s=$_('recogProgress');if(s)s.textContent='🔍 正在提取货品明细…';},2000);
+  var _pt2=setTimeout(function(){var s=$_('recogProgress');if(s)s.textContent='📦 正在整理入库清单…';},5000);
+  var clearProg=function(){clearTimeout(_pt1);clearTimeout(_pt2);};
   var fd=new FormData();fd.append('image',f);
   var up=await(await fetch('api/upload',{method:'POST',headers:{'Authorization':token},body:fd})).json();
-  if(!up.success){$_('recogResult').innerHTML='❌ 上传失败';return;}
+  if(!up.success){clearProg();$_('recogResult').innerHTML='❌ 上传失败';return;}
   // 识别带超时
   var ctrl=new AbortController();var tmr=setTimeout(function(){ctrl.abort()},120000);
   try{
     var j=await(await fetch('api/recognize',{method:'POST',headers:{'Authorization':token,'Content-Type':'application/json'},body:JSON.stringify({path:up.data.path}),signal:ctrl.signal})).json();
-    clearTimeout(tmr);
+    clearTimeout(tmr);clearProg();
     if(!j.success||!j.data||!j.data.items||!j.data.items.length){$_('recogResult').innerHTML='<div class="recog-item">❌ 识别失败，请手工录入</div>';return;}
-  }catch(e){$_('recogResult').innerHTML='<div class="recog-item">❌ 识别超时，请重试或手工录入</div>';return;}
+  }catch(e){clearProg();$_('recogResult').innerHTML='<div class="recog-item">❌ 识别超时，请重试或手工录入</div>';return;}
   window._recog=j.data;
-  $_('recogResult').innerHTML=j.data.items.map(x=>'<div class="recog-item"><span class="name">'+x.name+'</span><span>'+x.qty+' '+x.unit+'</span></div>').join('');
-  // 显示确认弹窗
-  $_('aiItems').innerHTML=j.data.items.map(x=>'<div class="recog-item"><span class="name">'+x.name+'</span><span>'+x.qty+' '+x.unit+'</span></div>').join('');
-  $_('aiSupplier').textContent='供应商: '+(j.data.supplier||'?')+' | 日期: '+(j.data.date||'?');
+  $_('recogResult').innerHTML=j.data.items.map(function(x){return '<div class="recog-item"><span class="name">'+x.name+'</span><span>'+(x.qty||1)+' '+x.unit+'</span></div>';}).join('');
+  // 可编辑确认弹窗
+  renderAIConfirmItems(j.data);
   showSheet('aiConfirmSheet');
 }
+function renderAIConfirmItems(data){
+  $_('aiSupplierInput').value=data.supplier||'';
+  $_('aiItems').innerHTML=data.items.map(function(x,i){
+    return '<div class="recog-edit-row" data-idx="'+i+'">'+
+      '<input class="re-name" value="'+(x.name||'').replace(/"/g,'&quot;')+'" placeholder="品名">'+
+      '<input class="re-spec" value="'+(x.spec||'').replace(/"/g,'&quot;')+'" placeholder="规格">'+
+      '<input class="re-qty" type="number" value="'+(x.qty||1)+'" min="1">'+
+      '<button class="re-del" onclick="this.parentElement.remove()">🗑</button></div>';
+  }).join('');
+}
 async function confirmAIInbound(){
-  var info=window._recog;if(!info||!info.items)return;
-  for(var item of info.items){
+  var rows=$_('aiItems').querySelectorAll('.recog-edit-row');
+  if(!rows.length){showToast('无入库项');return;}
+  var supplier=$_('aiSupplierInput').value.trim()||'未知供应商';
+  var info=window._recog||{};
+  for(var i=0;i<rows.length;i++){
+    var r=rows[i];
+    var name=r.querySelector('.re-name').value.trim();
+    var spec=r.querySelector('.re-spec').value.trim();
+    var qty=parseInt(r.querySelector('.re-qty').value)||1;
+    if(!name)continue;
     var pj=await(await fetch('api/products',{headers:{'Authorization':token}})).json();
-    var prod=pj.data&&pj.data.find(p=>p.name===item.name||p.name.includes(item.name)||item.name.includes(p.name));
+    var prod=pj.data&&pj.data.find(function(p){return p.name===name&&(p.spec||'')===spec;});
     var pid;
     if(prod)pid=prod.id;
     else{
-      var cj=await(await fetch('api/products',{method:'POST',headers:{'Authorization':token,'Content-Type':'application/json'},body:JSON.stringify({name:item.name,spec:item.spec||'',unit:item.unit||'个'})})).json();
+      var cj=await(await fetch('api/products',{method:'POST',headers:{'Authorization':token,'Content-Type':'application/json'},body:JSON.stringify({name:name,spec:spec,unit:'个'})})).json();
       if(!cj.success)continue;pid=cj.data.id;
     }
-    await fetch('api/inbound',{method:'POST',headers:{'Authorization':token,'Content-Type':'application/json'},body:JSON.stringify({productId:pid,quantity:item.qty||1,date:info.date||new Date().toISOString().split('T')[0],docRef:'AI识别'})});
+    await fetch('api/inbound',{method:'POST',headers:{'Authorization':token,'Content-Type':'application/json'},body:JSON.stringify({productId:pid,quantity:qty,date:info.date||new Date().toISOString().split('T')[0],docRef:'AI识别',doc_image_path:info.docPath||''})});
   }
   hideSheet('cameraSheet');hideSheet('aiConfirmSheet');showToast('✅ 入库完成');loadStock();
 }
@@ -429,6 +515,88 @@ function showToast(msg){
   el.textContent=msg;el.style.opacity='1';
   setTimeout(function(){el.style.opacity='0';},2000);
 }
+
+// ====== 出库 ======
+var _obProductId=0;
+function openOutbound(id,name,stock){
+  _obProductId=id;
+  $_('obProdName').value=name;
+  $_('obStock').value=stock;
+  $_('obQty').value=1;
+  $_('obRemark').value='';
+  showSheet('outboundSheet');
+}
+async function submitOutbound(){
+  var qty=parseInt($_('obQty').value)||0;
+  if(qty<1){showToast('数量必须≥1');return;}
+  var stock=parseFloat($_('obStock').value)||0;
+  if(qty>stock){showToast('❌ 库存不足：当前'+stock+'，请求'+qty);return;}
+  var j=await(await fetch('api/outbound',{method:'POST',headers:{'Authorization':token,'Content-Type':'application/json'},body:JSON.stringify({productId:_obProductId,quantity:qty,date:new Date().toISOString().split('T')[0],remark:$_('obRemark').value.trim()})})).json();
+  if(j.success){hideSheet('outboundSheet');showToast('✅ 出库成功');loadStock();}
+  else showToast('❌ '+j.error);
+}
+
+// ====== 编辑模式 ======
+function toggleEditMode(){
+  _editMode=!_editMode;
+  $_('editBar').style.display=_editMode?'flex':'none';
+  $_('editBtn').style.background=_editMode?'#3370ff':'#fff';
+  $_('editBtn').style.color=_editMode?'#fff':'#333';
+  if(_editMode)_editData={};
+  loadStock();
+}
+function cancelEdit(){
+  _editMode=false;_editData={};
+  $_('editBar').style.display='none';
+  $_('editBtn').style.background='#fff';$_('editBtn').style.color='#333';
+  loadStock();
+}
+function trackEdit(el){
+  var id=el.getAttribute('data-id'),field=el.getAttribute('data-field');
+  if(!_editData[id])_editData[id]={};
+  _editData[id][field]=el.value;
+}
+async function submitEdit(){
+  // 收集所有编辑
+  var inputs=$_('stockList').querySelectorAll('.edit-input');
+  var editsMap={};
+  inputs.forEach(function(el){
+    var id=el.getAttribute('data-id'),field=el.getAttribute('data-field');
+    if(!editsMap[id])editsMap[id]={id:+id,name:'',spec:''};
+    editsMap[id][field]=el.value;
+  });
+  // 补充未修改的字段
+  var edits=Object.values(editsMap).filter(function(e){return e.name||e.spec;});
+  if(!edits.length){showToast('无修改');cancelEdit();return;}
+  // 调 edit-preview
+  var pj=await(await fetch('api/products/edit-preview',{method:'POST',headers:{'Authorization':token,'Content-Type':'application/json'},body:JSON.stringify({edits:edits})})).json();
+  if(!pj.success){showToast('❌ '+pj.error);return;}
+  if(pj.merges&&pj.merges.length){
+    // 显示合并确认
+    window._pendingEdits=edits;
+    window._pendingMerges=pj.merges;
+    $_('mergeList').innerHTML=pj.merges.map(function(m){
+      return '<div class="recog-item"><span>「'+m.editName+'」('+m.originalSpec+') → 合并到「'+m.targetName+'」('+m.targetSpec+')</span></div>';
+    }).join('');
+    showSheet('mergeSheet');
+  } else {
+    // 无合并，直接应用
+    await applyEdits(edits,[]);
+  }
+}
+async function applyEditWithMerge(){
+  var mergeDecisions=window._pendingMerges.map(function(m){return {editId:m.editId,mergeIntoId:m.mergeIntoId,confirmed:true};});
+  await applyEdits(window._pendingEdits,mergeDecisions);
+  hideSheet('mergeSheet');
+}
+async function applyEdits(edits,mergeDecisions){
+  var j=await(await fetch('api/products/edit-apply',{method:'POST',headers:{'Authorization':token,'Content-Type':'application/json'},body:JSON.stringify({edits:edits,mergeDecisions:mergeDecisions})})).json();
+  if(j.success){showToast('✅ 编辑已保存');cancelEdit();}
+  else showToast('❌ '+j.error);
+}
+
+// ====== 供应商筛选弹窗触发 ======
+function showSupplierFilter(){showSheet('supplierSheet');}
 </script>
 </body>
 </html>

@@ -456,6 +456,59 @@ app.post('/api/products', auth, async (req, res) => {
   } catch (e) { res.json({ success: false, error: e.message }); }
 });
 
+// ====== 编辑预览（检测合并冲突）======
+app.post('/api/products/edit-preview', auth, async (req, res) => {
+  try {
+    const { edits } = req.body; // [{id, name, spec, unit}]
+    if (!edits || !edits.length) return res.json({ success: true, merges: [] });
+    const ship = getShip(req);
+    const allProducts = (await pool.query('SELECT id,name,spec,unit FROM products WHERE project_no=$1', [ship])).rows;
+    const norm = s => (s||'').trim().toLowerCase().replace(/\s+/g,'');
+    const merges = [];
+    for (const edit of edits) {
+      const nName = norm(edit.name), nSpec = norm(edit.spec);
+      const conflict = allProducts.find(p => p.id !== edit.id && norm(p.name) === nName && norm(p.spec) === nSpec);
+      if (conflict) {
+        const orig = allProducts.find(p => p.id === edit.id);
+        merges.push({ editId: edit.id, mergeIntoId: conflict.id, editName: edit.name, editSpec: edit.spec, targetName: conflict.name, targetSpec: conflict.spec, originalSpec: orig ? orig.spec : '' });
+      }
+    }
+    res.json({ success: true, merges });
+  } catch (e) { res.json({ success: false, error: e.message }); }
+});
+
+// ====== 编辑应用（含合并处理）======
+app.post('/api/products/edit-apply', auth, async (req, res) => {
+  const client = await pool.connect();
+  try {
+    const { edits, mergeDecisions } = req.body; // edits:[{id,name,spec,unit}], mergeDecisions:[{editId, mergeIntoId, confirmed:true}]
+    if (!edits || !edits.length) return res.json({ success: true });
+    await client.query('BEGIN');
+    const mergeMap = {};
+    if (mergeDecisions) mergeDecisions.forEach(m => { if (m.confirmed) mergeMap[m.editId] = m.mergeIntoId; });
+    for (const edit of edits) {
+      const targetId = mergeMap[edit.id];
+      if (targetId) {
+        // 合并：将 edit.id 的入库/出库记录转移到 targetId
+        await client.query('UPDATE inbound_records SET product_id=$1 WHERE product_id=$2', [targetId, edit.id]);
+        await client.query('UPDATE outbound_records SET product_id=$1 WHERE product_id=$2', [targetId, edit.id]);
+        await client.query('UPDATE change_log SET product_id=$1 WHERE product_id=$2', [targetId, edit.id]);
+        await client.query('DELETE FROM products WHERE id=$1', [edit.id]);
+      } else {
+        // 普通编辑
+        const orig = (await client.query('SELECT spec FROM products WHERE id=$1', [edit.id])).rows[0];
+        await client.query('UPDATE products SET name=$1,spec=$2,unit=$3 WHERE id=$4', [edit.name, edit.spec||'', edit.unit||'个', edit.id]);
+        if (orig && orig.spec !== (edit.spec||'')) {
+          await logChange('edit', edit.id, edit.name, edit.spec, 0, 0, 0, req.user.displayName, `规格变更: ${orig.spec} → ${edit.spec}`, 'products', edit.id);
+        }
+      }
+    }
+    await client.query('COMMIT');
+    res.json({ success: true });
+  } catch (e) { await client.query('ROLLBACK').catch(()=>{}); res.json({ success: false, error: e.message }); }
+  finally { client.release(); }
+});
+
 app.get('/api/inventory/supplier/:sid', auth, async (req, res) => {
   try {
     const r = await pool.query(`SELECT p.id,p.name,p.spec,p.unit,p.supplier_id,COALESCE(s.name,'') AS supplier_name,
