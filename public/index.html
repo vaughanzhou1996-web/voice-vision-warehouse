@@ -66,7 +66,7 @@
       <select id="supplierFilter" style="padding:6px 10px;border:1px solid #ddd;border-radius:6px;font-size:13px;" onchange="toggleSupplierView()">
         <option value="">所有供应商</option>
       </select>
-      <input type="text" class="search-input" id="searchInput" placeholder="🔍 搜索..." oninput="loadInventory()" style="width:140px">
+      <input type="text" class="search-input" id="searchInput" placeholder="🔍 搜索..." oninput="debounceLoadInventory()" style="width:140px">
       <span class="count-badge" id="countBadge">0 项</span>
       <div class="zoom-controls"><button class="zoom-btn" onclick="zoomTable(-1)" title="缩小">−</button><span class="zoom-level" id="zoomLevel">100%</span><button class="zoom-btn" onclick="zoomTable(1)" title="放大">+</button></div>
       <button class="btn btn-sm" id="expandAllBtn" onclick="expandAll()" style="display:none">📂 全部展开</button>
@@ -102,7 +102,7 @@
   <div class="table-header">
     <h2>📋 变更日志</h2>
     <div class="table-actions">
-      <input type="text" class="search-input" id="logSearchInput" placeholder="🔍 搜索..." oninput="loadChangelog()" style="width:200px">
+      <input type="text" class="search-input" id="logSearchInput" placeholder="🔍 搜索..." oninput="debounceLoadChangelog()" style="width:200px">
       <span class="count-badge" id="logBadge">0 条</span>
       <button class="btn btn-sm" onclick="loadChangelog()">🔄 刷新</button>
     </div>
@@ -145,7 +145,7 @@
 <div id="tabInrecords" class="tab-content" style="display:none">
   <div class="table-header"><h2>📥 入库记录</h2>
     <div class="table-actions">
-      <input type="text" class="search-input" id="inRecSearch" placeholder="🔍 搜索..." oninput="loadInRecords()" style="width:200px">
+      <input type="text" class="search-input" id="inRecSearch" placeholder="🔍 搜索..." oninput="debounceLoadInRecords()" style="width:200px">
       <span class="count-badge" id="inRecBadge">0 条</span>
       <button class="btn btn-sm" onclick="loadInRecords()">🔄 刷新</button>
     </div>
@@ -161,7 +161,7 @@
 <div id="tabOutrecords" class="tab-content" style="display:none">
   <div class="table-header"><h2>📤 出库记录</h2>
     <div class="table-actions">
-      <input type="text" class="search-input" id="outRecSearch" placeholder="🔍 搜索..." oninput="loadOutRecords()" style="width:200px">
+      <input type="text" class="search-input" id="outRecSearch" placeholder="🔍 搜索..." oninput="debounceLoadOutRecords()" style="width:200px">
       <span class="count-badge" id="outRecBadge">0 条</span>
       <button class="btn btn-sm" onclick="loadOutRecords()">🔄 刷新</button>
     </div>
@@ -295,7 +295,7 @@
     </div>
     <div class="form-row"><label>日期</label><input type="date" id="inDate" class="form-input" onkeydown="if(event.key==='Enter'){event.preventDefault();submitInbound()}"></div>
   </div>
-  <div class="modal-footer"><button class="btn btn-primary" onclick="submitInbound()">✅ 确认入库</button></div></div>
+  <div class="modal-footer"><button class="btn btn-primary" id="btnInbound" onclick="submitInbound()">✅ 确认入库</button></div></div>
 </div>
 
 <!-- ====== 出库弹窗 ====== -->
@@ -309,7 +309,7 @@
     <div class="form-row"><label>领用人 <span style="color:#e53935">*</span></label><input type="text" id="outDept" class="form-input" placeholder="领用人姓名" required></div>
     <div class="form-row"><label>备注</label><input type="text" id="outRemark" class="form-input" placeholder="出库备注（选填）"></div>
   </div>
-  <div class="modal-footer"><button class="btn btn-danger" onclick="submitOutbound()">✅ 确认出库</button></div></div>
+  <div class="modal-footer"><button class="btn btn-danger" id="btnOutbound" onclick="submitOutbound()">✅ 确认出库</button></div></div>
 </div>
 
 <!-- ====== 批量出库确认弹窗 ====== -->
@@ -333,7 +333,7 @@
 <div class="modal-overlay" id="aiConfirmModal" onclick="if(event.target===this)hideModal('aiConfirmModal')">
   <div class="modal modal-wide" style="max-width:1100px;width:95vw"><div class="modal-header"><h3>📥 AI识别确认入库 <small style="font-size:11px;color:#888;font-weight:normal">（点击窗外可缩为浮窗）</small></h3><button class="modal-close" onclick="closeAiModalFinally()">✕</button></div>
   <div class="modal-body" id="aiConfirmBody" style="max-height:75vh;overflow-y:auto;padding:24px"></div>
-  <div class="modal-footer"><button class="btn" onclick="hideModal('aiConfirmModal')">缩为浮窗</button><button class="btn btn-primary" onclick="confirmAIInbound()">✅ 确认入库</button></div></div>
+  <div class="modal-footer"><button class="btn" onclick="hideModal('aiConfirmModal')">缩为浮窗</button><button class="btn btn-primary" id="btnAIConfirm" onclick="confirmAIInbound()">✅ 确认入库</button></div></div>
 </div>
 
 <!-- ====== 历史单据弹窗 ====== -->

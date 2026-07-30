@@ -262,6 +262,44 @@ async function main() {
   if (hasEdit) ok('mobile.html含编辑模式+合并弹窗');
   else ng('mobile.html缺少编辑模式');
 
+  // 15. 卡17: 防重复提交+领用人+语音修复+去抖
+  console.log('\n--- 15. 卡17 防重+领用人+语音+去抖 ---');
+  // 15a. 桌面防重锁
+  const deskHtml = await new Promise((resolve, reject) => {
+    const u = new URL('/app.js', BASE);
+    http.get({ hostname: u.hostname, port: u.port, path: u.pathname }, res => {
+      let d = ''; res.on('data', c => d += c); res.on('end', () => resolve(d));
+    }).on('error', reject);
+  });
+  const hasLock = deskHtml.includes('_submitting') && deskHtml.includes('btnInbound') && deskHtml.includes('btnOutbound') && deskHtml.includes('btnAIConfirm');
+  if (hasLock) ok('桌面app.js含_submitting防重锁(3按钮)');
+  else ng('桌面app.js缺少防重锁');
+  // 15b. 手机防重锁
+  const mobLock = mobHtml.includes('_submitting') && mobHtml.includes('btnMInbound') && mobHtml.includes('btnMOutbound') && mobHtml.includes('btnMAIConfirm') && mobHtml.includes('btnMEdit') && mobHtml.includes('btnMMerge');
+  if (mobLock) ok('手机mobile.html含_submitting防重锁(6按钮)');
+  else ng('手机mobile.html缺少防重锁');
+  // 15c. 手机出库含领用人必填
+  const hasDept = mobHtml.includes('obDept') && mobHtml.includes('领用人') && mobHtml.includes('department:dept');
+  if (hasDept) ok('手机出库含领用人必填+传department');
+  else ng('手机出库缺少领用人字段');
+  // 15d. 手机语音修复(api/voice/asr + FormData)
+  const voiceFix = mobHtml.includes('api/voice/asr') && mobHtml.includes('FormData') && !mobHtml.includes('/inventory/api/speech/recognize');
+  if (voiceFix) ok('手机语音已修复为api/voice/asr+FormData');
+  else ng('手机语音未修复');
+  // 15e. 手机语音UI防溢出
+  const voiceOverflow = mobHtml.includes('word-break:break-all') && mobHtml.includes('overflow-x:hidden');
+  if (voiceOverflow) ok('手机语音UI防溢出样式');
+  else ng('手机语音缺少防溢出样式');
+  // 15f. 搜索去抖(桌面+手机)
+  const deskDebounce = deskHtml.includes('debounceLoadInventory') && deskHtml.includes('_debounce');
+  const mobDebounce = mobHtml.includes('debounceLoadStock') && mobHtml.includes('_searchTimer');
+  if (deskDebounce && mobDebounce) ok('桌面+手机搜索均含去抖');
+  else ng(`去抖缺失: 桌面=${deskDebounce} 手机=${mobDebounce}`);
+  // 15g. changelog含department字段
+  const clR = await req('GET', '/api/changelog?ship=YY01', null, users.caojie.token);
+  if (clR.body.success && clR.body.data.length > 0 && 'department' in clR.body.data[0]) ok('changelog API含department字段');
+  else ng('changelog API缺少department字段');
+
   // 汇总
   console.log(`\n═══ 结果: ${pass} 通过 / ${fail} 失败 ═══`);
   process.exit(fail > 0 ? 1 : 0);

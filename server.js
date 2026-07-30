@@ -721,7 +721,7 @@ app.get('/api/ships/stats', auth, async (req, res) => {
 // ====== 变更日志 & 回滚 ======
 app.get('/api/changelog', auth, async (req, res) => {
   try {
-    const r = await pool.query('SELECT c.*,COALESCE(s.name,\'\') AS supplier_name FROM change_log c LEFT JOIN products p ON c.product_id=p.id LEFT JOIN suppliers s ON p.supplier_id=s.id WHERE p.project_no=$1 ORDER BY c.created_at DESC LIMIT 200', [getShip(req)]);
+    const r = await pool.query(`SELECT c.*,COALESCE(s.name,'') AS supplier_name,COALESCE(o.department,'') AS department FROM change_log c LEFT JOIN products p ON c.product_id=p.id LEFT JOIN suppliers s ON p.supplier_id=s.id LEFT JOIN outbound_records o ON c.ref_table='outbound_records' AND c.ref_record_id=o.id WHERE p.project_no=$1 ORDER BY c.created_at DESC LIMIT 200`, [getShip(req)]);
     res.json({ success: true, data: r.rows });
   } catch (e) { res.json({ success: false, error: e.message }); }
 });

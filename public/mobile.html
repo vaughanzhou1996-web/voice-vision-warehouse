@@ -142,12 +142,12 @@ input,select,textarea{font-size:16px!important}/* 防iOS缩放 */
   </div>
 
   <div class="search-bar">
-    <input type="text" id="searchInput" placeholder="🔍 搜索产品..." oninput="loadStock()">
+    <input type="text" id="searchInput" placeholder="🔍 搜索产品..." oninput="debounceLoadStock()">
     <button class="filter-btn" onclick="showSupplierFilter()" id="filterBtn">🏢</button>
     <button class="filter-btn" onclick="toggleEditMode()" id="editBtn" title="编辑模式">✏️</button>
   </div>
   <div class="edit-bar" id="editBar" style="display:none">
-    <button class="btn-confirm" onclick="submitEdit()">✅ 确认编辑</button>
+    <button class="btn-confirm" id="btnMEdit" onclick="submitEdit()">✅ 确认编辑</button>
     <button class="btn-cancel" onclick="cancelEdit()">取消</button>
   </div>
 
@@ -184,18 +184,18 @@ input,select,textarea{font-size:16px!important}/* 防iOS缩放 */
     <div class="field"><label>数量</label><input type="number" id="mQty" min="1" value="1"></div>
     <div class="field"><label>规格</label><input type="text" id="mSpec" placeholder="选填"></div>
     <div class="field"><label>单位</label><input type="text" id="mUnit" value="个" placeholder="个/件/台/套"></div>
-    <button class="btn-block btn-primary" onclick="submitInbound()">✅ 确认入库</button>
+    <button class="btn-block btn-primary" id="btnMInbound" onclick="submitInbound()">✅ 确认入库</button>
     <button class="btn-block btn-outline" style="margin-top:6px" onclick="hideSheet('inboundSheet')">取消</button>
   </div>
 </div>
 
 <!-- ====== 语音识别弹窗 ====== -->
 <div class="modal-overlay" id="voiceSheet">
-  <div class="sheet" style="text-align:center">
+  <div class="sheet" style="text-align:center;max-width:92vw;overflow-x:hidden">
     <h3>🎤 语音输入</h3>
     <p style="color:#888;font-size:13px;margin-bottom:20px">说出「入库 产品名 数量」或「出库 产品名 数量」</p>
     <button class="voice-large" id="voiceBtn" onclick="toggleVoice()">🎤</button>
-    <p id="voiceResult" style="margin-top:16px;font-size:15px;min-height:24px"></p>
+    <p id="voiceResult" style="margin-top:16px;font-size:15px;min-height:24px;word-break:break-all;overflow-wrap:break-word;max-width:100%"></p>
     <button class="btn-block btn-outline" style="margin-top:20px" onclick="hideSheet('voiceSheet')">关闭</button>
   </div>
 </div>
@@ -222,7 +222,7 @@ input,select,textarea{font-size:16px!important}/* 防iOS缩放 */
     <h3>📥 确认入库</h3>
     <div class="field"><label>供应商</label><input type="text" id="aiSupplierInput" placeholder="供应商名称"></div>
     <div id="aiItems"></div>
-    <button class="btn-block btn-primary" onclick="confirmAIInbound()" style="margin-top:12px">✅ 确认入库</button>
+    <button class="btn-block btn-primary" id="btnMAIConfirm" onclick="confirmAIInbound()" style="margin-top:12px">✅ 确认入库</button>
     <button class="btn-block btn-outline" style="margin-top:6px" onclick="hideSheet('aiConfirmSheet')">取消</button>
   </div>
 </div>
@@ -234,8 +234,9 @@ input,select,textarea{font-size:16px!important}/* 防iOS缩放 */
     <div class="field"><label>产品</label><input type="text" id="obProdName" readonly style="background:#f5f5f5"></div>
     <div class="field"><label>当前库存</label><input type="text" id="obStock" readonly style="background:#f5f5f5"></div>
     <div class="field"><label>出库数量</label><input type="number" id="obQty" min="1" value="1"></div>
+    <div class="field"><label>领用人 <span style="color:#e53935">*</span></label><input type="text" id="obDept" placeholder="请输入领用人姓名"></div>
     <div class="field"><label>备注（可选）</label><input type="text" id="obRemark" placeholder="选填"></div>
-    <button class="btn-block btn-primary" onclick="submitOutbound()">✅ 确认出库</button>
+    <button class="btn-block btn-primary" id="btnMOutbound" onclick="submitOutbound()">✅ 确认出库</button>
     <button class="btn-block btn-outline" style="margin-top:6px" onclick="hideSheet('outboundSheet')">取消</button>
   </div>
 </div>
@@ -246,13 +247,15 @@ input,select,textarea{font-size:16px!important}/* 防iOS缩放 */
     <h3>⚠️ 检测到重复产品</h3>
     <p style="color:#888;font-size:13px;margin-bottom:12px">以下编辑将导致产品合并，库存记录将归并到目标产品：</p>
     <div id="mergeList"></div>
-    <button class="btn-block btn-primary" onclick="applyEditWithMerge()" style="margin-top:12px">✅ 确认合并并保存</button>
+    <button class="btn-block btn-primary" id="btnMMerge" onclick="applyEditWithMerge()" style="margin-top:12px">✅ 确认合并并保存</button>
     <button class="btn-block btn-outline" style="margin-top:6px" onclick="hideSheet('mergeSheet')">取消返回编辑</button>
   </div>
 </div>
 
 <script>
 let token='',username='',displayName='',selectedSupplier=0;
+var _searchTimer=null;
+function debounceLoadStock(){clearTimeout(_searchTimer);_searchTimer=setTimeout(loadStock,300);}
 function $_(id){return document.getElementById(id)}
 function showSheet(id){$_(id).classList.add('active')}
 function hideSheet(id){$_(id).classList.remove('active')}
@@ -340,6 +343,10 @@ function openInbound(id,name){
   showSheet('inboundSheet');
 }
 async function submitInbound(){
+  var btn=$_('btnMInbound');
+  if(btn&&btn._submitting)return;
+  if(btn){btn._submitting=true;btn.disabled=true;btn.textContent='⏳ 提交中…';}
+  try{
   var sel=$_('mProdSelect').value,manual=$_('mProdManual').value.trim();
   var qty=+$_('mQty').value,spec=$_('mSpec').value,unit=$_('mUnit').value||'个';
   if(!sel&&!manual){alert('请选择或输入产品');return;}
@@ -352,6 +359,7 @@ async function submitInbound(){
   var j=await(await fetch('api/inbound',{method:'POST',headers:{'Authorization':token,'Content-Type':'application/json'},body:JSON.stringify({productId:pid,quantity:qty,date:new Date().toISOString().split('T')[0]})})).json();
   if(j.success){hideSheet('inboundSheet');showToast('✅ 入库成功');loadStock();}
   else alert('入库失败: '+j.error);
+  }finally{if(btn){btn._submitting=false;btn.disabled=false;btn.textContent='✅ 确认入库';}}
 }
 
 // ====== 语音（自录上传版） ======
@@ -385,14 +393,13 @@ async function toggleVoice(){
       btn.className='voice-large';
       const mimeType = mediaRecorder.mimeType;
       const blob = new Blob(audioChunks, {type: mimeType});
-      const reader = new FileReader();
-      reader.onload = async () => {
-        const base64 = reader.result.split(',')[1];
-        const tk = 'Bearer ' + token;
-        const r = await fetch('/inventory/api/speech/recognize', {
+      const fd = new FormData();
+      fd.append('audio', blob, 'recording.' + (mimeType.includes('mp4')?'mp4':'webm'));
+      try{
+        const r = await fetch('api/voice/asr', {
           method:'POST',
-          headers:{'Authorization':tk,'Content-Type':'application/json'},
-          body:JSON.stringify({audio: base64, mimeType})
+          headers:{'Authorization':token},
+          body:fd
         });
         const j = await r.json();
         if(j.success && j.text){
@@ -401,9 +408,10 @@ async function toggleVoice(){
         } else {
           $_('voiceResult').textContent='❌ 识别失败：'+(j.error||'未识别到语音');
         }
-        btn.textContent='🎤';
-      };
-      reader.readAsDataURL(blob);
+      }catch(e){
+        $_('voiceResult').textContent='❌ 语音上传失败';
+      }
+      btn.textContent='🎤';
     };
     mediaRecorder.start();
     btn.className='voice-large recording';
@@ -465,6 +473,10 @@ function renderAIConfirmItems(data){
   }).join('');
 }
 async function confirmAIInbound(){
+  var btn=$_('btnMAIConfirm');
+  if(btn&&btn._submitting)return;
+  if(btn){btn._submitting=true;btn.disabled=true;btn.textContent='⏳ 提交中…';}
+  try{
   var rows=$_('aiItems').querySelectorAll('.recog-edit-row');
   if(!rows.length){showToast('无入库项');return;}
   var supplier=$_('aiSupplierInput').value.trim()||'未知供应商';
@@ -486,6 +498,7 @@ async function confirmAIInbound(){
     await fetch('api/inbound',{method:'POST',headers:{'Authorization':token,'Content-Type':'application/json'},body:JSON.stringify({productId:pid,quantity:qty,date:info.date||new Date().toISOString().split('T')[0],docRef:'AI识别',doc_image_path:info.docPath||''})});
   }
   hideSheet('cameraSheet');hideSheet('aiConfirmSheet');showToast('✅ 入库完成');loadStock();
+  }finally{if(btn){btn._submitting=false;btn.disabled=false;btn.textContent='✅ 确认入库';}}
 }
 
 // ====== 最近操作 ======
@@ -500,10 +513,11 @@ function switchTab(tab){
 async function loadRecent(){
   var j=await(await fetch('api/changelog',{headers:{'Authorization':token}})).json();
   if(!j.success||!j.data.length){$_('stockList').innerHTML='<div class="loading">暂无记录</div>';return;}
-  $_('stockList').innerHTML=j.data.slice(0,20).map(r=>{
-    var icon=r.action_type==='inbound'?'📥':r.action_type==='outbound'?'📤':'⏪';
+  $_('stockList').innerHTML=j.data.slice(0,20).map(function(r){
+    var icon=r.action_type==='inbound'?'📥':r.action_type==='outbound'?'📤':'';
+    var dept=r.department?' | 领用:'+r.department:'';
     return '<div class="stock-card"><div class="info"><div class="name">'+icon+' '+r.product_name+'</div>'+
-      '<div class="spec">'+r.action_type+' ×'+r.quantity+' | '+(new Date(r.created_at).toLocaleString())+'</div>'+
+      '<div class="spec">'+r.action_type+' ×'+r.quantity+dept+' | '+(new Date(r.created_at).toLocaleString())+'</div>'+
       '<div class="supplier">'+(r.details||'')+'</div></div></div>';
   }).join('');
 }
@@ -523,17 +537,25 @@ function openOutbound(id,name,stock){
   $_('obProdName').value=name;
   $_('obStock').value=stock;
   $_('obQty').value=1;
+  $_('obDept').value='';
   $_('obRemark').value='';
   showSheet('outboundSheet');
 }
 async function submitOutbound(){
+  var btn=$_('btnMOutbound');
+  if(btn&&btn._submitting)return;
+  var dept=$_('obDept').value.trim();
+  if(!dept){showToast('❌ 请填写领用人');return;}
+  if(btn){btn._submitting=true;btn.disabled=true;btn.textContent='⏳ 提交中…';}
+  try{
   var qty=parseInt($_('obQty').value)||0;
   if(qty<1){showToast('数量必须≥1');return;}
   var stock=parseFloat($_('obStock').value)||0;
   if(qty>stock){showToast('❌ 库存不足：当前'+stock+'，请求'+qty);return;}
-  var j=await(await fetch('api/outbound',{method:'POST',headers:{'Authorization':token,'Content-Type':'application/json'},body:JSON.stringify({productId:_obProductId,quantity:qty,date:new Date().toISOString().split('T')[0],remark:$_('obRemark').value.trim()})})).json();
+  var j=await(await fetch('api/outbound',{method:'POST',headers:{'Authorization':token,'Content-Type':'application/json'},body:JSON.stringify({productId:_obProductId,quantity:qty,date:new Date().toISOString().split('T')[0],department:dept,remark:$_('obRemark').value.trim()})})).json();
   if(j.success){hideSheet('outboundSheet');showToast('✅ 出库成功');loadStock();}
   else showToast('❌ '+j.error);
+  }finally{if(btn){btn._submitting=false;btn.disabled=false;btn.textContent='✅ 确认出库';}}
 }
 
 // ====== 编辑模式 ======
@@ -557,6 +579,10 @@ function trackEdit(el){
   _editData[id][field]=el.value;
 }
 async function submitEdit(){
+  var btn=$_('btnMEdit');
+  if(btn&&btn._submitting)return;
+  if(btn){btn._submitting=true;btn.disabled=true;btn.textContent='⏳ 提交中…';}
+  try{
   // 收集所有编辑
   var inputs=$_('stockList').querySelectorAll('.edit-input');
   var editsMap={};
@@ -583,11 +609,17 @@ async function submitEdit(){
     // 无合并，直接应用
     await applyEdits(edits,[]);
   }
+  }finally{if(btn){btn._submitting=false;btn.disabled=false;btn.textContent='✅ 确认编辑';}}
 }
 async function applyEditWithMerge(){
+  var btn=$_('btnMMerge');
+  if(btn&&btn._submitting)return;
+  if(btn){btn._submitting=true;btn.disabled=true;btn.textContent='⏳ 提交中…';}
+  try{
   var mergeDecisions=window._pendingMerges.map(function(m){return {editId:m.editId,mergeIntoId:m.mergeIntoId,confirmed:true};});
   await applyEdits(window._pendingEdits,mergeDecisions);
   hideSheet('mergeSheet');
+  }finally{if(btn){btn._submitting=false;btn.disabled=false;btn.textContent='✅ 确认合并并保存';}}
 }
 async function applyEdits(edits,mergeDecisions){
   var j=await(await fetch('api/products/edit-apply',{method:'POST',headers:{'Authorization':token,'Content-Type':'application/json'},body:JSON.stringify({edits:edits,mergeDecisions:mergeDecisions})})).json();

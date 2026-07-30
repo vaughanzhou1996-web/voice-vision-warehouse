@@ -164,6 +164,14 @@ async function loadSupplierForProduct(pid){
   if(p&&p.supplier_id)document.getElementById('inSupplier').value=p.supplier_id;
 }
 
+// ====== 搜索去抖 ======
+var _dbTimers={};
+function _debounce(key,fn,ms){clearTimeout(_dbTimers[key]);_dbTimers[key]=setTimeout(fn,ms||300);}
+function debounceLoadInventory(){_debounce('inv',loadInventory);}
+function debounceLoadChangelog(){_debounce('log',loadChangelog);}
+function debounceLoadInRecords(){_debounce('inr',loadInRecords);}
+function debounceLoadOutRecords(){_debounce('out',loadOutRecords);}
+
 async function loadInventory(){
   const sid=document.getElementById('supplierFilter').value;
   const url=sid?apiUrl(`api/inventory/supplier/${sid}`):apiUrl('api/inventory');
@@ -351,6 +359,10 @@ async function showManualInbound(prefill){
   showModal('inboundModal');
 }
 async function submitInbound(){
+  const btn=document.getElementById('btnInbound');
+  if(btn&&btn._submitting)return;
+  if(btn){btn._submitting=true;btn.disabled=true;btn.textContent='⏳ 提交中…';}
+  try{
   let productId,productName;
   const selVal=document.getElementById('inProdSelect').value;
   const manualVal=document.getElementById('inProdManual').value.trim();
@@ -369,6 +381,7 @@ async function submitInbound(){
   const j=await(await fetch('api/inbound',{method:'POST',headers:getHeaders(),body:JSON.stringify({productId,quantity:+$V('inQty'),date:$V('inDate'),remark:supplierId})})).json();
   if(j.success){hideModal('inboundModal');showToast('✅ 入库成功',2000);loadInventory();}
   else alert('入库失败: '+j.error);
+  }finally{if(btn){btn._submitting=false;btn.disabled=false;btn.textContent='✅ 确认入库';}}
 }
 
 // ====== 出库 ======
@@ -381,10 +394,15 @@ function openOut(id,name){
   document.getElementById('outRemark').value='';showModal('outboundModal');
 }
 async function submitOutbound(){
+  const btn=document.getElementById('btnOutbound');
+  if(btn&&btn._submitting)return;
+  if(btn){btn._submitting=true;btn.disabled=true;btn.textContent='⏳ 提交中…';}
+  try{
   if(!$V('outDept').trim()){alert('请填写领用人');return;}
   const j=await(await fetch('api/outbound',{method:'POST',headers:getHeaders(),body:JSON.stringify({productId:+$V('outProdId'),quantity:+$V('outQty'),date:$V('outDate'),department:$V('outDept'),remark:$V('outRemark')})})).json();
   if(j.success){hideModal('outboundModal');showToast('✅ 出库成功',2000);loadInventory();}
   else alert('出库失败: '+j.error);
+  }finally{if(btn){btn._submitting=false;btn.disabled=false;btn.textContent='✅ 确认出库';}}
 }
 
 // ====== 产品详情（替代原来的查看单据）======
@@ -647,6 +665,10 @@ function onAiNameChange(i){
 }
 
 async function confirmAIInbound(){
+  const btn=document.getElementById('btnAIConfirm');
+  if(btn&&btn._submitting)return;
+  if(btn){btn._submitting=true;btn.disabled=true;btn.textContent='⏳ 提交中…';}
+  try{
   const info = window._pendingRecognition;
   if(!info)return;
   // 从弹窗读取可编辑的供应商和日期
@@ -694,6 +716,7 @@ async function confirmAIInbound(){
   window._pendingImagePath = null;
   addMsg(`✅ 已入库 ${results.length} 项: ${results.map(r=>r.name+'×'+r.qty).join(', ')}<br><button onclick="rollbackBatch(\'${batchKey}\',this)" style="margin-top:8px;padding:6px 14px;background:#e53935;color:#fff;border:none;border-radius:6px;font-size:13px;cursor:pointer">↩️ 撤销此批入库</button>`,'ai');
   loadInventory();
+  }finally{if(btn){btn._submitting=false;btn.disabled=false;btn.textContent='✅ 确认入库';}}
 }
 
 // ====== 库存看板（图表分析）======
