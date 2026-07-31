@@ -45,10 +45,10 @@ function shipErrorCard(msg){
     '<button onclick="showShipSelect()" style="padding:10px 24px;background:#3370ff;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:14px;">🔄 重试</button>'+
     '</div>';
 }
-function selectShip(ship){
+async function selectShip(ship){
   currentShip=ship; localStorage.setItem('currentShip',ship);
-  // 绑定船舶到 token（多租户鉴权）
-  fetch('api/select-ship',{method:'POST',headers:{'Authorization':token,'Content-Type':'application/json'},body:JSON.stringify({ship})}).catch(()=>{});
+  // 绑定船舶到 token（多租户鉴权）—— 必须等完成再加载数据
+  try{ await fetch('api/select-ship',{method:'POST',headers:{'Authorization':token,'Content-Type':'application/json'},body:JSON.stringify({ship})}); }catch(e){}
   document.getElementById('shipSelectPage').style.display='none';
   document.getElementById('mainApp').style.display='block';
   document.getElementById('userName').textContent=displayName;
@@ -58,10 +58,10 @@ function selectShip(ship){
   document.getElementById('chatMessages').innerHTML='';
   loadBriefing();
 }
-function switchShip(ship){
+async function switchShip(ship){
   if(ship===currentShip)return;
   currentShip=ship; localStorage.setItem('currentShip',ship);
-  fetch('api/select-ship',{method:'POST',headers:{'Authorization':token,'Content-Type':'application/json'},body:JSON.stringify({ship})}).catch(()=>{});
+  try{ await fetch('api/select-ship',{method:'POST',headers:{'Authorization':token,'Content-Type':'application/json'},body:JSON.stringify({ship})}); }catch(e){}
   updateShipPills();
   const name=(shipsList.find(s=>s.project_no===ship)||{}).name||ship;
   showToast('已切换到 '+name, 2000);
