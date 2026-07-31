@@ -174,6 +174,17 @@ async function main() {
     await req('POST', '/api/select-ship', { ship: 'YY01' }, token);
   }
 
+  // 4d. 未选船直接带 ?ship= 访问 → 400（卡23 鉴权漏洞修复）
+  {
+    const login2 = await req('POST', '/api/login', { username: 'caojie', password: 'demo1234' });
+    const token2 = login2.body.data && login2.body.data.token;
+    if (token2) {
+      const r = await req('GET', '/api/inventory?ship=YY01', null, token2);
+      if (r.status === 400 && r.body.error && r.body.error.includes('请先选择船舶')) ok('未选船带?ship=访问 → 400');
+      else ng(`未选船访问: status=${r.status} ${JSON.stringify(r.body).slice(0, 60)}`);
+    } else ng('无法获取第二个token');
+  }
+
   // ─── 5. 并发安全 ───
   console.log('\n--- 5. 并发安全 ---');
   {

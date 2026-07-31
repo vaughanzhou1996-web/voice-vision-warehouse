@@ -4,7 +4,7 @@
 
 | 项目 | 值 |
 |------|-----|
-| 基线 commit | `52e084e` (tag: v1.0-demo) |
+| 基线 commit | `a0c77d0` (contest-p0-0731，移植编辑模式/删除类目) |
 | 分支 | `contest-p0-0731` |
 | 版本号 | v1.0-demo |
 | 竞赛船舶 | YY01 (远洋01) / YY02 (远洋02) |
@@ -88,7 +88,7 @@
 | 数据被测试污染 | `POST /api/demo/reset` 或 `node scripts/reset-demo.js` |
 | 服务崩溃 | `npm start` (自动重连 PG) |
 | 数据库丢失 | `node scripts/seed-demo.js` 重建全部种子数据 |
-| 代码回退 | `git checkout 52e084e` |
+| 代码回退 | `git checkout a0c77d0` |
 
 ---
 

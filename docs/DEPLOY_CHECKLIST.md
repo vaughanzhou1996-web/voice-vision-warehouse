@@ -10,7 +10,7 @@
 - [ ] PostgreSQL 14+ 运行中
 - [ ] `.env` 文件已配置（参考 `.env.example`）
 - [ ] 数据库 `inventory_demo` 已创建
-- [ ] 端口 8000 未被占用
+- [ ] 端口 8001 未被占用（线上 demo 端口）
 
 ---
 
@@ -31,8 +31,15 @@
 ### 3. 启动服务
 
 - [ ] `npm start`
-- [ ] 控制台输出 `listening on 0.0.0.0:8000`
+- [ ] 控制台输出 `listening on 0.0.0.0:8001`
 - [ ] 无报错堆栈
+
+> **线上部署信息（2026-07-31 20:43）**
+> - 服务器：139.224.228.185（admin）
+> - 路径：/home/admin/inventory-demo
+> - 端口：8001
+> - 数据库：inventory_demo (PostgreSQL 15.18 @ 127.0.0.1:5432)
+> - commit：a0c77d0 (contest-p0-0731)
 
 ### 4. 冒烟验证（只读）
 
@@ -62,7 +69,7 @@
 | 情况 | 操作 |
 |------|------|
 | 数据异常 | `node scripts/reset-demo.js` |
-| 代码问题 | `git checkout 52e084e && npm start` |
+| 代码问题 | `git checkout a0c77d0 && npm start` |
 | 数据库损坏 | `dropdb inventory_demo && createdb inventory_demo && node scripts/seed-demo.js` |
 
 ---

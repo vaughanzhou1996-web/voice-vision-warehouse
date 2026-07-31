@@ -170,8 +170,11 @@ app.use('/api', (req, res, next) => {
   // 内联 authShip：跨船资源隔离
   const ship = req.query.ship;
   if (ship) {
-    // 显式传了 ?ship=，必须与 currentShip 匹配
-    if (user.currentShip && user.currentShip !== ship) {
+    // 显式传了 ?ship=，必须先绑定船舶且匹配
+    if (!user.currentShip) {
+      return res.status(400).json({ success: false, error: '请先选择船舶' });
+    }
+    if (user.currentShip !== ship) {
       return res.status(403).json({ success: false, error: '无权访问该船舶数据' });
     }
   } else {
@@ -1264,7 +1267,14 @@ app.get('/api/mail/inbox', auth, async (req, res) => {
 // ====== 启动 ======
 // 版本信息（只读，不执行 shell）
 const APP_VERSION = 'v1.0-demo';
-app.get('/api/version', (req, res) => { res.json({ version: APP_VERSION }); });
+app.get('/api/version', (req, res) => {
+  res.json({
+    version: APP_VERSION,
+    commit: 'a0c77d0',
+    deployed_at: '2026-08-01T01:00:17+08:00',
+    demo_db_summary: 'YY01=56 / YY02=41 (97 products, 133 inbound, 52 outbound)'
+  });
+});
 
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`🚀 远洋01/远洋02 进出库管理系统运行在 http://0.0.0.0:${PORT} [${APP_VERSION}]`);

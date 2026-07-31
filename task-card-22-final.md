@@ -1,4 +1,4 @@
-# 任务卡 22：编辑模式 + 删除类目 移植（比赛收尾最终版）
+# 任务卡 22：编辑模式 + 删除类目 移植（比赛收尾最终版）✅ 已完成于 2026-07-31
 
 > **目标仓库**：`/Users/vaughan/Desktop/inventory-hackathon-contest`（contest-p0-0731 分支）
 > **参考源**：`/Users/vaughan/Desktop/inventory-hackathon`（旧仓库，commit 52e084e，卡 18 之后）
@@ -81,3 +81,11 @@
 `feat: 移植编辑模式+删除类目（曹姐核心需求）+ 选船卡片SQL修复（比赛收尾最终版）`
 
 提交后告诉 Hermes 验收，**不要自行部署服务器**——Hermes 负责部署。
+
+---
+
+## ✅ 完成记录
+
+- commit: `a0c77d0` (contest-p0-0731)
+- 部署: 2026-08-01 01:00 → /home/admin/inventory-demo (端口 8001)
+- 验证: 58/58 (e2e) + 26/26 (card12) + 14/14 (safety) + 5/5 (forecast) 全绿
