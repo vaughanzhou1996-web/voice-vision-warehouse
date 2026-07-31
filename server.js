@@ -25,6 +25,7 @@ const upload = multer({ dest: UPLOAD_DIR, limits: { fileSize: 10*1024*1024 } });
 
 // 百炼 Qwen 模型（lib/qwen.js）
 const { chatText, chatVision, speechToText } = require('./lib/qwen');
+const invService = require('./lib/inventory-service');
 
 const app = express();
 // 移动端UA检测→302跳转mobile.html
@@ -110,12 +111,12 @@ function auth(req, res, next) {
   next();
 }
 
-// 多租户鉴权：校验 token 绑定的 project_no 与请求 ?ship= 一致
+// 多租户鉴权：校验 token 绑定的 currentShip 与请求 ?ship= 一致
 function authShip(req, res, next) {
   const ship = req.query.ship;
   if (!ship) return next(); // 无 ship 参数的路由不检查
-  if (!req.user.project_no) return next(); // 尚未绑定船舶（select-ship 之前）
-  if (req.user.project_no !== ship) return res.status(403).json({ success: false, error: '无权访问该船舶数据' });
+  if (!req.user.currentShip) return next(); // 尚未绑定船舶（select-ship 之前）
+  if (req.user.currentShip !== ship) return res.status(403).json({ success: false, error: '无权访问该船舶数据' });
   next();
 }
 
@@ -124,17 +125,16 @@ app.post('/api/select-ship', auth, (req, res) => {
   const { ship } = req.body;
   if (!SHIPS.some(s => s.project_no === ship)) return res.json({ success: false, error: '无效船舶' });
   const token = req.headers.authorization;
-  tokens[token].project_no = ship;
+  tokens[token].currentShip = ship;
   res.json({ success: true });
 });
 
 // 船舶配置（数据驱动）
 const SHIPS = JSON.parse(fs.readFileSync(path.join(__dirname, 'data', 'ships.json'), 'utf8'));
 
-// 船号白名单，默认第一条
+// 船号白名单（中间件已确保 req.query.ship 有效）
 function getShip(req) {
-  const s = req.query.ship;
-  return SHIPS.some(sh => sh.project_no === s) ? s : SHIPS[0].project_no;
+  return req.query.ship;
 }
 function fmtInt(v){const n=parseFloat(v);return isNaN(n)?v:Math.round(n);}
 
@@ -156,19 +156,28 @@ async function getStock(productId) {
 }
 
 // ====== API（全部需要登录）======
-// 全局 auth + authShip 中间件（排除 login/logout/select-ship/ships/register_supplier）
-const _noAuthPaths = ['/api/login', '/api/logout', '/api/select-ship', '/api/ships', '/api/register_supplier'];
+// 全局 auth + authShip 中间件（排除 login/logout/select-ship/ships/register_supplier/register）
+const _noAuthPaths = ['/login', '/logout', '/select-ship', '/ships', '/register_supplier', '/register', '/version'];
 app.use('/api', (req, res, next) => {
-  if (_noAuthPaths.includes(req.path)) return next();
+  if (_noAuthPaths.some(p => req.path === p || req.path.startsWith(p + '/'))) return next();
   // 内联 auth
   const token = req.headers.authorization;
   const user = tokens[token];
   if (!user) return res.status(401).json({ success: false, error: '未登录' });
   req.user = user;
-  // 内联 authShip
+  // 内联 authShip：跨船资源隔离
   const ship = req.query.ship;
-  if (ship && user.project_no && user.project_no !== ship) {
-    return res.status(403).json({ success: false, error: '无权访问该船舶数据' });
+  if (ship) {
+    // 显式传了 ?ship=，必须与 currentShip 匹配
+    if (user.currentShip && user.currentShip !== ship) {
+      return res.status(403).json({ success: false, error: '无权访问该船舶数据' });
+    }
+  } else {
+    // 未传 ?ship=，自动注入 currentShip
+    if (!user.currentShip) {
+      return res.status(400).json({ success: false, error: '请先选择船舶' });
+    }
+    req.query.ship = user.currentShip;
   }
   next();
 });
@@ -222,6 +231,10 @@ app.get('/api/batch-docs/:batchKey', auth, async (req, res) => {
 // 关联单据
 app.get('/api/documents/:pid', auth, async (req, res) => {
   try {
+    // 产品归属校验
+    const prodCheck = await pool.query('SELECT project_no FROM products WHERE id=$1', [req.params.pid]);
+    if (!prodCheck.rows.length) return res.status(404).json({ success: false, error: '产品不存在' });
+    if (prodCheck.rows[0].project_no !== getShip(req)) return res.status(403).json({ success: false, error: '无权访问该船舶数据' });
     const i = await pool.query(`SELECT id,quantity,date,operator,remark,doc_type,doc_ref,doc_image_path,created_at FROM inbound_records WHERE product_id=$1 ORDER BY date DESC`,[req.params.pid]);
     const o = await pool.query(`SELECT id,quantity,date,department,doc_type,doc_ref,created_at FROM outbound_records WHERE product_id=$1 ORDER BY date DESC`,[req.params.pid]);
     res.json({ success: true, data: { inbound: i.rows, outbound: o.rows } });
@@ -232,17 +245,14 @@ app.get('/api/documents/:pid', auth, async (req, res) => {
 app.post('/api/inbound', auth, async (req, res) => {
   try {
     const { productId, quantity, date, remark, docRef, docImagePath } = req.body;
-    const prod = (await pool.query('SELECT name,spec,unit FROM products WHERE id=$1', [productId])).rows[0];
-    const stockBefore = await getStock(productId);
-    const r = await pool.query(
-      `INSERT INTO inbound_records (product_id,quantity,date,operator,remark,doc_type,doc_ref,doc_image_path) VALUES ($1,$2,$3,$4,$5,'入库单',$6,$7) RETURNING *`,
-      [productId, quantity, date||new Date(), req.user.displayName, remark||'', docRef||'', docImagePath||'']
-    );
-    const stockAfter = await getStock(productId);
-    const details = remark||'';
-    const aiTag = docRef && docRef.includes('AI') ? '🤖AI识别' : '';
-    await logChange('inbound', productId, prod.name, prod.spec, quantity, stockBefore, stockAfter, req.user.displayName, aiTag+(aiTag?': ':'')+details, 'inbound_records', r.rows[0].id);
-    res.json({ success: true, data: r.rows[0] });
+    const result = await invService.inboundSingle(pool, {
+      productId, quantity, date, remark,
+      docType: '入库单', docRef: docRef || '', docImagePath: docImagePath || '',
+      ship: getShip(req), operator: req.user.displayName
+    });
+    if (result.code === 400) return res.status(400).json({ success: false, error: result.error });
+    if (result.code === 403) return res.status(403).json({ success: false, error: result.error });
+    res.json(result);
   } catch (e) { res.json({ success: false, error: e.message }); }
 });
 
@@ -250,67 +260,38 @@ app.post('/api/inbound', auth, async (req, res) => {
 app.post('/api/inbound/batch', auth, async (req, res) => {
   try {
     const { items, date, docRef } = req.body;
-    const results = [];
-    for (const item of items) {
-      const prod = (await pool.query('SELECT name,spec,unit FROM products WHERE id=$1', [item.productId])).rows[0];
-      if (!prod) continue;
-      const stockBefore = await getStock(item.productId);
-      const r = await pool.query(
-        `INSERT INTO inbound_records (product_id,quantity,date,operator,remark,doc_type,doc_ref) VALUES ($1,$2,$3,$4,$5,'入库单',$6) RETURNING *`,
-        [item.productId, item.quantity, date||new Date(), req.user.displayName, item.remark||'', docRef||'']
-      );
-      const stockAfter = await getStock(item.productId);
-      await logChange('inbound', item.productId, prod.name, prod.spec, item.quantity, stockBefore, stockAfter, req.user.displayName, `批量入库: ${item.remark||''}`, 'inbound_records', r.rows[0].id);
-      results.push({ productId: item.productId, productName: prod.name, quantity: item.quantity });
-    }
-    res.json({ success: true, data: results });
+    const mappedItems = (items || []).map(item => ({ ...item, docRef: item.docRef || docRef || '' }));
+    const result = await invService.inboundBatch(pool, {
+      items: mappedItems, date,
+      ship: getShip(req), operator: req.user.displayName
+    });
+    if (result.code === 400) return res.status(400).json({ success: false, error: result.error });
+    if (result.code === 403) return res.status(403).json({ success: false, error: result.error });
+    res.json(result);
   } catch (e) { res.json({ success: false, error: e.message }); }
 });
 
 // 出库
 app.post('/api/outbound', auth, async (req, res) => {
-  const client = await pool.connect();
-  try {
-    const { productId, quantity, date, department, remark } = req.body;
-    const prod = (await client.query('SELECT name,spec,unit FROM products WHERE id=$1', [productId])).rows[0];
-    if (!prod) { res.json({ success: false, error: '产品不存在' }); return; }
-    const stockBefore = (await client.query(`SELECT COALESCE(SUM(i.quantity),0)-COALESCE((SELECT SUM(o.quantity) FROM outbound_records o WHERE o.product_id=$1),0) AS stock FROM inbound_records i WHERE i.product_id=$1`, [productId])).rows[0].stock;
-    if (parseFloat(stockBefore) < parseFloat(quantity)) {
-      res.json({ success: false, error: `库存不足：当前库存${fmtInt(stockBefore)}，请求出库${quantity}` });
-      return;
-    }
-    await client.query('BEGIN');
-    const r = await client.query(
-      `INSERT INTO outbound_records (product_id,quantity,date,department,remark,doc_type) VALUES ($1,$2,$3,$4,$5,'出库单') RETURNING *`,
-      [productId, quantity, date||new Date(), department||'', remark||'']
-    );
-    const stockAfter = (await client.query(`SELECT COALESCE(SUM(i.quantity),0)-COALESCE((SELECT SUM(o.quantity) FROM outbound_records o WHERE o.product_id=$1),0) AS stock FROM inbound_records i WHERE i.product_id=$1`, [productId])).rows[0].stock;
-    await logChange('outbound', productId, prod.name, prod.spec, quantity, stockBefore, stockAfter, req.user.displayName, remark||'', 'outbound_records', r.rows[0].id);
-    await client.query('COMMIT');
-    res.json({ success: true, data: r.rows[0] });
-  } catch (e) { await client.query('ROLLBACK').catch(()=>{}); res.json({ success: false, error: e.message }); }
-  finally { client.release(); }
+  const { productId, quantity, date, department, remark } = req.body;
+  const result = await invService.outboundSingle(pool, {
+    productId, quantity, date, department, remark,
+    ship: getShip(req), operator: req.user.displayName
+  });
+  if (result.code === 400) return res.status(400).json({ success: false, error: result.error });
+  if (result.code === 403) return res.status(403).json({ success: false, error: result.error });
+  res.json(result);
 });
 
 // 批量出库
 app.post('/api/outbound/batch', auth, async (req, res) => {
-  try {
-    const { items, date, department } = req.body;
-    const results = [];
-    for (const item of items) {
-      const prod = (await pool.query('SELECT name,spec,unit FROM products WHERE id=$1', [item.productId])).rows[0];
-      if (!prod) continue;
-      const stockBefore = await getStock(item.productId);
-      const r = await pool.query(
-        `INSERT INTO outbound_records (product_id,quantity,date,department,remark,doc_type) VALUES ($1,$2,$3,$4,$5,'出库单') RETURNING *`,
-        [item.productId, item.quantity, date||new Date(), department||'', item.remark||'']
-      );
-      const stockAfter = await getStock(item.productId);
-      await logChange('outbound', item.productId, prod.name, prod.spec, item.quantity, stockBefore, stockAfter, req.user.displayName, `批量出库: ${item.remark||''}`, 'outbound_records', r.rows[0].id);
-      results.push({ productId: item.productId, productName: prod.name, quantity: item.quantity });
-    }
-    res.json({ success: true, data: results });
-  } catch (e) { res.json({ success: false, error: e.message }); }
+  const { items, date, department } = req.body;
+  const result = await invService.outboundBatch(pool, {
+    items, date, department,
+    ship: getShip(req), operator: req.user.displayName
+  });
+  if (result.code === 400) return res.status(400).json({ success: false, error: result.error });
+  res.json(result);
 });
 
 // 上传图片
@@ -750,6 +731,10 @@ app.post('/api/notes/:productId', auth, async (req, res) => {
   try {
     const { content, qty } = req.body;
     if (!content) return res.json({ success: false, error: '备注内容不能为空' });
+    // 产品归属校验
+    const prodCheck = await pool.query('SELECT project_no FROM products WHERE id=$1', [req.params.productId]);
+    if (!prodCheck.rows.length) return res.status(404).json({ success: false, error: '产品不存在' });
+    if (prodCheck.rows[0].project_no !== getShip(req)) return res.status(403).json({ success: false, error: '无权访问该船舶数据' });
     const r = await pool.query(
       'INSERT INTO product_notes (product_id, content, qty, created_by) VALUES ($1,$2,$3,$4) RETURNING *',
       [req.params.productId, content, qty || 0, req.user.displayName]);
@@ -915,21 +900,23 @@ app.post('/api/chat/ops', auth, async (req, res) => {
 app.get('/api/briefing', auth, async (req, res) => {
   try {
     const user = req.user;
+    const ship = getShip(req);
     let snapshot = '';
     let prompt = '';
 
     if (user.role === 'admin') {
-      // 库存管理员：库存告急 + 近3天动态
+      // 库存管理员：库存告急 + 近3天动态（按当前船舶过滤）
       const low = await pool.query(`
         SELECT p.name,p.spec,COALESCE(inb.t,0)-COALESCE(outb.t,0) AS stock
         FROM products p
         LEFT JOIN (SELECT product_id,SUM(quantity) t FROM inbound_records GROUP BY product_id) inb ON p.id=inb.product_id
         LEFT JOIN (SELECT product_id,SUM(quantity) t FROM outbound_records GROUP BY product_id) outb ON p.id=outb.product_id
-        WHERE COALESCE(inb.t,0)-COALESCE(outb.t,0) < 3 ORDER BY stock ASC LIMIT 10`);
+        WHERE p.project_no=$1 AND COALESCE(inb.t,0)-COALESCE(outb.t,0) < 3 ORDER BY stock ASC LIMIT 10`, [ship]);
       const recent = await pool.query(`
-        SELECT action_type,product_name,quantity,operator,created_at FROM change_log
-        WHERE action_type IN ('inbound','outbound') AND created_at >= NOW() - INTERVAL '3 days'
-        ORDER BY created_at DESC LIMIT 15`);
+        SELECT c.action_type,c.product_name,c.quantity,c.operator,c.created_at FROM change_log c
+        JOIN products p ON c.product_id=p.id
+        WHERE c.action_type IN ('inbound','outbound') AND p.project_no=$1 AND c.created_at >= NOW() - INTERVAL '3 days'
+        ORDER BY c.created_at DESC LIMIT 15`, [ship]);
       snapshot = `【库存告急（库存<3）】共${low.rows.length}项：\n` + low.rows.map(r => `${r.name}(${r.spec||'无规格'}) 库存${r.stock}`).join('；') +
         `\n【近3天出入库动态】共${recent.rows.length}条：\n` + recent.rows.map(r => `${r.action_type==='inbound'?'入库':'出库'} ${r.product_name}×${r.quantity} 操作人:${r.operator}`).join('；');
       prompt = `你是库存管理AI助手。请根据以下数据为库存管理员「${user.displayName}」生成今日工作简报，150字以内，口语化，开头用"${user.displayName}，"。重点提醒告急物料和近期动态。`;
@@ -967,7 +954,7 @@ app.get('/api/briefing', auth, async (req, res) => {
       prompt = `你是项目管理AI助手。请根据以下数据为队长「${user.displayName}」生成项目风险简报，150字以内，口语化，开头用"${user.displayName}，"。重点指出哪些节点临近但相关备件库存不足。`;
 
     } else {
-      // 分析员（analyst 及其他角色）：呆滞TOP5 + 本月出入库对比
+      // 分析员（analyst 及其他角色）：呆滞TOP5 + 本月出入库对比（按当前船舶）
       const stagnant = await pool.query(`
         SELECT p.name,p.spec,COALESCE(inb.t,0)-COALESCE(outb.t,0) AS stock,
           MAX(o.created_at) AS last_out
@@ -975,14 +962,14 @@ app.get('/api/briefing', auth, async (req, res) => {
         LEFT JOIN (SELECT product_id,SUM(quantity) t FROM inbound_records GROUP BY product_id) inb ON p.id=inb.product_id
         LEFT JOIN (SELECT product_id,SUM(quantity) t FROM outbound_records GROUP BY product_id) outb ON p.id=outb.product_id
         LEFT JOIN outbound_records o ON o.product_id=p.id
-        WHERE COALESCE(inb.t,0)-COALESCE(outb.t,0) > 0
+        WHERE p.project_no=$1 AND COALESCE(inb.t,0)-COALESCE(outb.t,0) > 0
         GROUP BY p.id,p.name,p.spec,inb.t,outb.t
         HAVING MAX(o.created_at) < NOW() - INTERVAL '30 days' OR MAX(o.created_at) IS NULL
-        ORDER BY stock DESC LIMIT 5`);
+        ORDER BY stock DESC LIMIT 5`, [ship]);
       const monthly = await pool.query(`
         SELECT
-          COALESCE((SELECT SUM(quantity) FROM inbound_records WHERE created_at >= date_trunc('month',NOW())),0) AS month_in,
-          COALESCE((SELECT SUM(quantity) FROM outbound_records WHERE created_at >= date_trunc('month',NOW())),0) AS month_out`);
+          COALESCE((SELECT SUM(quantity) FROM inbound_records WHERE created_at >= date_trunc('month',NOW()) AND product_id IN (SELECT id FROM products WHERE project_no=$1)),0) AS month_in,
+          COALESCE((SELECT SUM(quantity) FROM outbound_records WHERE created_at >= date_trunc('month',NOW()) AND product_id IN (SELECT id FROM products WHERE project_no=$1)),0) AS month_out`, [ship]);
       const mi = monthly.rows[0];
       snapshot = `【呆滞物料TOP5（30天未出库）】\n` + stagnant.rows.map((r, i) => `${i + 1}.${r.name}(${r.spec||''}) 库存${r.stock} 最后出库:${r.last_out ? new Date(r.last_out).toLocaleDateString('zh-CN') : '从未'}`).join('\n') +
         `\n【本月出入库对比】入库${mi.month_in}件 / 出库${mi.month_out}件`;
@@ -1206,6 +1193,10 @@ app.get('/api/mail/inbox', auth, async (req, res) => {
 });
 
 // ====== 启动 ======
+// 版本信息（只读，不执行 shell）
+const APP_VERSION = 'v1.0-demo';
+app.get('/api/version', (req, res) => { res.json({ version: APP_VERSION }); });
+
 app.listen(PORT, '0.0.0.0', () => {
-  console.log(`🚀 远洋01/远洋02 进出库管理系统运行在 http://0.0.0.0:${PORT}`);
+  console.log(`🚀 远洋01/远洋02 进出库管理系统运行在 http://0.0.0.0:${PORT} [${APP_VERSION}]`);
 });

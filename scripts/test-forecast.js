@@ -49,11 +49,13 @@ const SAFE_PARTS = [
 async function main() {
   console.log('====== 建造周期×库存趋势预测验收 ======\n');
 
-  // 1. 登录
+  // 1. 登录 + 绑定船舶
   const login = await request('POST', '/api/login', { username: 'caojie', password: 'demo1234' });
   if (!login.success) { console.error('❌ 登录失败'); process.exit(1); }
   const token = login.data.token;
-  console.log('✅ 登录成功\n');
+  const sel = await request('POST', '/api/select-ship', { ship: 'YY01' }, token);
+  if (!sel.success) { console.error('❌ 绑定船舶失败:', sel.error); process.exit(1); }
+  console.log('✅ 登录成功（已绑定YY01）\n');
 
   // 2. 调用预测接口
   console.log('--- 调用 GET /api/forecast ---');
@@ -106,6 +108,7 @@ async function main() {
   const now = new Date();
   const horizon = new Date(now.getTime() + 60 * 86400000);
   for (const entry of schedule) {
+    if (entry.ship !== 'YY01') continue; // 只对比当前船舶
     const d = new Date(entry.date + 'T00:00:00');
     if (d < now || d > horizon) continue;
     for (const part of entry.required_parts) {

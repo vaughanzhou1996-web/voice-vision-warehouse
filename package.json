@@ -4,7 +4,11 @@
   "description": "库存管理系统 - 凯通阀门",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "test": "npm run test:api && npm run test:safety",
+    "test:api": "node scripts/test-e2e.js",
+    "test:safety": "node scripts/test-safety.js",
+    "smoke": "node scripts/smoke-demo.js"
   },
   "dependencies": {
     "axios": "^1.6.2",

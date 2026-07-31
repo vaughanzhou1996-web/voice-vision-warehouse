@@ -1,0 +1,18 @@
+{
+  "total_products": 63,
+  "yy01_products": 42,
+  "yy02_products": 21,
+  "min_inbound_records": 116,
+  "min_outbound_records": 77,
+  "min_total_records": 193,
+  "min_doc_images": 7,
+  "anchors": {
+    "截止阀_DN50_stock": 4,
+    "轴接地阳极_stock": 21,
+    "球阀_DN25_stock": 2,
+    "泵用机械密封_104_25_stock": 4
+  },
+  "min_low_stock_products": 5,
+  "yy01_milestones": 10,
+  "yy02_milestones": 5
+}

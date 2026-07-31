@@ -19,20 +19,31 @@ function showLoginError(m){var e=document.getElementById('loginError');e.textCon
 async function showShipSelect(){
   document.getElementById('shipSelectPage').style.display='flex';
   document.getElementById('mainApp').style.display='none';
+  const container=document.getElementById('shipCards');
   try{
-    const j=await(await fetch('api/ships/stats',{headers:getHeaders()})).json();
-    if(j.success){
-      shipsList=j.data;
-      const container=document.getElementById('shipCards');
-      container.innerHTML=j.data.map(s=>`
-        <div class="ship-card" onclick="selectShip('${s.project_no}')">
-          <div style="font-size:44px;">🚢</div>
-          <div style="font-size:22px;font-weight:700;color:#1a3a5c;margin:10px 0 4px;">${s.name}</div>
-          <div style="font-size:13px;color:#666;">${s.products} 种物品 · 库存 ${s.stock} 件</div>
-          <div style="margin-top:14px;font-size:14px;color:#2b6cb0;font-weight:600;">进入系统 →</div>
-        </div>`).join('');
+    const resp=await fetch('api/ships/stats',{headers:getHeaders()});
+    if(!resp.ok){container.innerHTML=shipErrorCard('服务响应异常 ('+resp.status+')');return;}
+    const j=await resp.json();
+    if(!j.success||!j.data||!j.data.length){
+      container.innerHTML=shipErrorCard('Demo 数据暂不可用');return;
     }
-  }catch(e){}
+    shipsList=j.data;
+    container.innerHTML=j.data.map(s=>`
+      <div class="ship-card" onclick="selectShip('${s.project_no}')">
+        <div style="font-size:44px;">🚢</div>
+        <div style="font-size:22px;font-weight:700;color:#1a3a5c;margin:10px 0 4px;">${s.name}</div>
+        <div style="font-size:13px;color:#666;">${s.products} 种物品 · 库存 ${s.stock} 件</div>
+        <div style="margin-top:14px;font-size:14px;color:#2b6cb0;font-weight:600;">进入系统 →</div>
+      </div>`).join('');
+  }catch(e){container.innerHTML=shipErrorCard('网络连接失败，请检查服务');}
+}
+function shipErrorCard(msg){
+  return '<div style="text-align:center;padding:60px 20px;color:#666;">'+
+    '<div style="font-size:48px;margin-bottom:16px;">⚠️</div>'+
+    '<div style="font-size:16px;font-weight:600;margin-bottom:8px;">'+msg+'</div>'+
+    '<div style="font-size:13px;color:#999;margin-bottom:20px;">请确认 Demo 服务已启动且数据已初始化</div>'+
+    '<button onclick="showShipSelect()" style="padding:10px 24px;background:#3370ff;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:14px;">🔄 重试</button>'+
+    '</div>';
 }
 function selectShip(ship){
   currentShip=ship; localStorage.setItem('currentShip',ship);
