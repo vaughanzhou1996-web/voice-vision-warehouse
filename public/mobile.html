@@ -117,6 +117,101 @@ input,select,textarea{font-size:16px!important}/* 防iOS缩放 */
 .voice-large:active{transform:scale(.9);background:#2962e8}
 .voice-large.recording{background:#e53935;animation:pulse 1s infinite}
 @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(229,57,53,.4)}100%{box-shadow:0 0 0 20px rgba(229,57,53,0)}}
+/* ====== Ocean Stores mobile visual system ====== */
+:root{
+  --os-ink:#122430;--os-ink-soft:#203947;--os-paper:#f4f1eb;--os-white:#fffdfa;
+  --os-line:#d6d0c6;--os-muted:#6f7775;--os-copper:#b87943;--os-copper-dark:#8f5830;
+  --os-teal:#2e7775;--os-red:#b44a45;
+}
+html{background:var(--os-paper)}
+body{
+  background:
+    linear-gradient(rgba(18,36,48,.035) 1px,transparent 1px),
+    linear-gradient(90deg,rgba(18,36,48,.035) 1px,transparent 1px),
+    var(--os-paper);
+  background-size:28px 28px;color:var(--os-ink);
+  font-family:"Avenir Next","PingFang SC","Microsoft YaHei",sans-serif;
+}
+#loginPage{background:var(--os-ink);overflow:hidden}
+#loginPage::before{
+  content:"OCEAN STORES  /  MOBILE DECK";position:absolute;left:18px;bottom:18px;
+  color:rgba(255,253,250,.48);font:700 9px/1 ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.14em;
+}
+#loginPage .card{
+  position:relative;width:88%;max-width:352px;padding:32px 26px 28px;
+  border:1px solid rgba(255,253,250,.55);border-left:5px solid var(--os-copper);
+  border-radius:8px;background:var(--os-white);box-shadow:14px 14px 0 rgba(0,0,0,.18);
+}
+#loginPage .card::before{
+  content:"OS / MOBILE";display:block;margin-bottom:20px;color:var(--os-copper-dark);
+  font:700 10px/1 ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.16em;
+}
+#loginPage h1{font-size:0;color:var(--os-ink);text-align:left;margin-bottom:8px}
+#loginPage h1::after{content:"远洋物资台账";font-size:22px;letter-spacing:.04em}
+#loginPage p:not(#loginError){color:var(--os-muted);text-align:left;margin-bottom:20px}
+#loginPage input{border-color:var(--os-line);border-radius:4px;background:#fbfaf7;color:var(--os-ink)}
+#loginPage input:focus{border-color:var(--os-copper);box-shadow:0 0 0 3px rgba(184,121,67,.14)}
+#loginPage button{background:var(--os-copper);border-radius:4px;letter-spacing:.08em}
+#loginPage button:active{background:var(--os-copper-dark)}
+#mainApp{background:transparent}
+.topbar{
+  min-height:58px;padding:12px 16px;background:var(--os-ink);
+  border-bottom:3px solid var(--os-copper);box-shadow:0 5px 16px rgba(18,36,48,.14);
+}
+.topbar h1{font-size:0;color:var(--os-white);letter-spacing:.1em}
+.topbar h1::after{content:"OCEAN / STORES";font:700 16px/1 "Avenir Next",sans-serif}
+.topbar .user{color:rgba(255,253,250,.75);opacity:1}
+.topbar .logout{color:#e7b26a;opacity:1}
+.search-bar{top:58px;padding:10px 14px;background:rgba(255,253,250,.96);border-bottom:1px solid var(--os-line)}
+.search-bar input{border-color:var(--os-line);border-radius:4px;background:#f0ede6;color:var(--os-ink)}
+.search-bar input:focus{border-color:var(--os-copper);background:var(--os-white)}
+.search-bar .filter-btn{border-color:var(--os-line);border-radius:4px;background:var(--os-white);color:var(--os-ink)}
+#stockList{padding:12px 14px}
+.stock-card{
+  padding:15px 14px;margin-bottom:9px;border:1px solid var(--os-line);
+  border-left:4px solid var(--os-teal);border-radius:5px;background:var(--os-white);
+  box-shadow:3px 3px 0 rgba(18,36,48,.05);
+}
+.stock-card:active{transform:none;background:#f7f0e6}
+.stock-card .name{color:var(--os-ink);font-size:15px;letter-spacing:.02em}
+.stock-card .spec{color:var(--os-muted)}
+.stock-card .supplier{color:#8a918e}
+.stock-card .qty{color:var(--os-teal);font:700 19px/1 ui-monospace,SFMono-Regular,Menlo,monospace}
+.stock-card .qty.low{color:var(--os-red)}
+.stock-card .card-actions button{border-color:var(--os-copper);border-radius:4px;color:var(--os-copper-dark)}
+.stock-card .card-actions .btn-out:active{background:#f7eadb}
+.bottom-nav{background:var(--os-ink);border-top:3px solid var(--os-copper)}
+.bottom-nav button{color:rgba(255,253,250,.56)}
+.bottom-nav button.active{color:#e7b26a}
+.bottom-nav button:active{background:rgba(255,253,250,.08)}
+.modal-overlay{background:rgba(11,24,33,.64)}
+.modal-overlay .sheet{
+  border:1px solid var(--os-line);border-bottom:0;border-radius:9px 9px 0 0;
+  background:var(--os-white);box-shadow:0 -12px 30px rgba(18,36,48,.18);
+}
+.modal-overlay .sheet h3{color:var(--os-ink);letter-spacing:.03em}
+.modal-overlay .sheet .field label{color:var(--os-muted)}
+.modal-overlay .sheet .field input,.modal-overlay .sheet .field select{border-color:var(--os-line);border-radius:4px;background:#fbfaf7}
+.modal-overlay .sheet .field input:focus{border-color:var(--os-copper)}
+.modal-overlay .sheet .btn-block{border-radius:4px}
+.modal-overlay .sheet .btn-primary{background:var(--os-copper)}
+.modal-overlay .sheet .btn-primary:active{background:var(--os-copper-dark)}
+.modal-overlay .sheet .btn-outline{border-color:var(--os-line);color:var(--os-ink)}
+#supplierSheet .supplier-option{border-bottom-color:var(--os-line)}
+#supplierSheet .supplier-option.selected{color:var(--os-teal)}
+.recog-item,.recog-edit-row{border-bottom-color:var(--os-line)}
+.recog-item .qty{color:var(--os-teal)}
+.recog-edit-row input{border-color:var(--os-line);border-radius:4px}
+.recog-edit-row input:focus{border-color:var(--os-copper)}
+.recog-edit-row .re-del{border-radius:4px;background:#f6e3e1;color:var(--os-red)}
+.edit-bar{background:#f7eadb;border-bottom-color:#d8b98f}
+.edit-bar .btn-confirm{background:var(--os-copper)}
+.edit-bar .btn-cancel{border-color:var(--os-line)}
+.voice-large{background:var(--os-teal);border-radius:5px;box-shadow:5px 5px 0 rgba(18,36,48,.12)}
+.voice-large:active{background:#235c5b}
+.voice-large.recording{background:var(--os-red)}
+#toastEl{top:66px;border-radius:4px;background:var(--os-ink);box-shadow:4px 4px 0 rgba(0,0,0,.12)}
+</style>
 </style>
 </head>
 <body>
