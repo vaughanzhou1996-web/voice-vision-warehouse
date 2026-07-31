@@ -757,8 +757,12 @@ async function loadDashboard(){
   loadAiReport();
   // 图表
   if(typeof echarts==='undefined')return;
+  // 防御：图表容器必须是可见的，否则宽=0 看不到
   var names=data.map(function(r){return r.supplier_name;});
   if(!_chartBar)_chartBar=echarts.init(document.getElementById('chartBar'));
+  if(!_chartPie)_chartPie=echarts.init(document.getElementById('chartPie'));
+  // 容器从隐藏变可见时主动 resize
+  setTimeout(function(){if(_chartBar)_chartBar.resize();if(_chartPie)_chartPie.resize();}, 100);
   _chartBar.setOption({
     tooltip:{trigger:'axis'},
     legend:{data:['累计入库','累计出库','当前库存'],bottom:0,textStyle:{fontSize:11}},
