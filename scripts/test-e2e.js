@@ -222,24 +222,24 @@ async function main() {
   const invR3 = await req('GET', '/api/inventory?ship=YY01', null, users.caojie.token);
   const editProd = invR3.body.data && invR3.body.data[0];
   if (editProd) {
-    const epR = await req('POST', '/api/products/edit-preview', { edits: [{ id: editProd.id, name: editProd.name + '_test', spec: 'UNIQUE_SPEC_999', unit: '个' }] }, users.caojie.token);
-    if (epR.body.success && epR.body.merges.length === 0) ok('edit-preview无合并(唯一规格)');
+    const epR = await req('POST', '/api/products/edit-preview', { changes: [{ id: editProd.id, name: editProd.name + '_test', spec: 'UNIQUE_SPEC_999' }] }, users.caojie.token);
+    if (epR.body.success && epR.body.data.merges.length === 0) ok('edit-preview无合并(唯一规格)');
     else ng('edit-preview异常: ' + JSON.stringify(epR.body));
   } else ng('无产品可测edit-preview');
   // 14d. edit-preview 触发合并
   if (invR3.body.data && invR3.body.data.length >= 2) {
     const p1 = invR3.body.data[0], p2 = invR3.body.data[1];
-    const epR2 = await req('POST', '/api/products/edit-preview', { edits: [{ id: p1.id, name: p2.name, spec: p2.spec || '', unit: p1.unit }] }, users.caojie.token);
-    if (epR2.body.success && epR2.body.merges.length >= 1) ok('edit-preview检测到合并冲突');
+    const epR2 = await req('POST', '/api/products/edit-preview', { changes: [{ id: p1.id, name: p2.name, spec: p2.spec || '' }] }, users.caojie.token);
+    if (epR2.body.success && epR2.body.data.merges.length >= 1) ok('edit-preview检测到合并冲突');
     else ng('edit-preview未检测合并: ' + JSON.stringify(epR2.body));
   }
   // 14e. edit-apply 普通编辑
   if (editProd) {
-    const eaR = await req('POST', '/api/products/edit-apply', { edits: [{ id: editProd.id, name: editProd.name, spec: (editProd.spec || '') + '_edited', unit: editProd.unit }], mergeDecisions: [] }, users.caojie.token);
+    const eaR = await req('POST', '/api/products/edit-apply', { changes: [{ id: editProd.id, name: editProd.name, spec: (editProd.spec || '') + '_edited' }] }, users.caojie.token);
     if (eaR.body.success) ok('edit-apply普通编辑成功');
     else ng('edit-apply失败: ' + eaR.body.error);
     // 还原
-    await req('POST', '/api/products/edit-apply', { edits: [{ id: editProd.id, name: editProd.name, spec: editProd.spec || '', unit: editProd.unit }], mergeDecisions: [] }, users.caojie.token);
+    await req('POST', '/api/products/edit-apply', { changes: [{ id: editProd.id, name: editProd.name, spec: editProd.spec || '' }] }, users.caojie.token);
   }
   // 14f. mobile.html 含三段进度文案
   const mobHtml = await new Promise((resolve, reject) => {
@@ -336,6 +336,90 @@ async function main() {
     execSync('node scripts/test-card12.js', { cwd: path.join(__dirname, '..'), timeout: 60000, stdio: 'pipe' });
     ok('test-card12.js全绿');
   } catch (e) { ng('test-card12.js有失败'); }
+
+  // ====== 17. 编辑模式 + 删除类目 新增断言（卡22）======
+  const invFresh = await req('GET', '/api/inventory?ship=YY01', null, users.caojie.token);
+  // 17a. 编辑模式 - 普通改规格
+  const ep1Target = invFresh.body.data[2];
+  const ep1 = await req('POST', '/api/products/edit-preview', { changes: [{ id: ep1Target.id, name: ep1Target.name, spec: 'CARD22_UNIQUE_SPEC' }] }, users.caojie.token);
+  if (ep1.body.success && ep1.body.data.applied.length >= 1 && ep1.body.data.merges.length === 0) {
+    const ea1 = await req('POST', '/api/products/edit-apply', { changes: [{ id: ep1Target.id, name: ep1Target.name, spec: 'CARD22_UNIQUE_SPEC' }] }, users.caojie.token);
+    if (ea1.body.success) {
+      const cl = await req('GET', '/api/changelog?ship=YY01', null, users.caojie.token);
+      const hasEdit = cl.body.success && cl.body.data.some(r => r.action_type === 'edit');
+      if (hasEdit) ok('编辑模式-普通改规格+change_log有edit记录');
+      else ng('编辑模式-change_log缺少edit记录');
+      // 还原
+      await req('POST', '/api/products/edit-apply', { changes: [{ id: ep1Target.id, name: ep1Target.name, spec: ep1Target.spec || '' }] }, users.caojie.token);
+    } else ng('编辑模式-edit-apply失败: ' + (ea1.body.error || ''));
+  } else ng('编辑模式-edit-preview异常: ' + JSON.stringify(ep1.body));
+
+  // 17b. 编辑模式 - 撞车合并
+  const mp1 = await req('POST', '/api/products', { name: 'Card22MergeA', spec: 'MSPEC', unit: '个' }, users.caojie.token);
+  const mp2 = await req('POST', '/api/products', { name: 'Card22MergeB', spec: 'MSPEC2', unit: '个' }, users.caojie.token);
+  if (mp1.body.success && mp2.body.success) {
+    // 给 mp1 入库一条记录
+    await req('POST', '/api/inbound', { productId: mp1.body.data.id, quantity: 3, date: '2026-07-27', remark: 'merge-test' }, users.caojie.token);
+    // 把 mp2 改成和 mp1 同 name+spec → 触发合并
+    const ep2 = await req('POST', '/api/products/edit-preview', { changes: [{ id: mp2.body.data.id, name: 'Card22MergeA', spec: 'MSPEC' }] }, users.caojie.token);
+    if (ep2.body.success && ep2.body.data.merges.length >= 1) {
+      const ea2 = await req('POST', '/api/products/edit-apply', { changes: [{ id: mp2.body.data.id, name: 'Card22MergeA', spec: 'MSPEC' }], allowMerge: true }, users.caojie.token);
+      if (ea2.body.success) {
+        // 验证 mp2 已消失，mp1 的 inbound 包含转移记录
+        const invCheck = await req('GET', '/api/inventory?ship=YY01', null, users.caojie.token);
+        const mp2Gone = !invCheck.body.data.some(r => r.id === mp2.body.data.id);
+        const mp1Exists = invCheck.body.data.some(r => r.id === mp1.body.data.id);
+        if (mp2Gone && mp1Exists) ok('编辑模式-撞车合并成功(产品合并+记录转移)');
+        else ng('编辑模式-合并后产品状态异常');
+      } else ng('编辑模式-合并apply失败: ' + (ea2.body.error || ''));
+    } else ng('编辑模式-preview未检测到合并: ' + JSON.stringify(ep2.body));
+    // 清理 mp1
+    await req('POST', '/api/products/delete', { productId: mp1.body.data.id }, users.caojie.token);
+  } else ng('创建合并测试产品失败');
+
+  // 17c. 删除类目 - 库存=0 成功
+  const dp1 = await req('POST', '/api/products', { name: 'Card22DelEmpty', spec: 'DEL0', unit: '个' }, users.caojie.token);
+  if (dp1.body.success) {
+    const del1 = await req('POST', '/api/products/delete', { productId: dp1.body.data.id }, users.caojie.token);
+    if (del1.body.success) {
+      const invD = await req('GET', '/api/inventory?ship=YY01', null, users.caojie.token);
+      const gone = !invD.body.data.some(r => r.id === dp1.body.data.id);
+      if (gone) ok('删除类目-库存0成功删除');
+      else ng('删除类目-删除后仍出现在列表');
+    } else ng('删除类目-删除失败: ' + (del1.body.error || ''));
+  } else ng('创建空库存产品失败');
+
+  // 17d. 删除类目 - 库存>0 拒绝
+  const dp2 = await req('POST', '/api/products', { name: 'Card22DelStock', spec: 'DEL1', unit: '个' }, users.caojie.token);
+  if (dp2.body.success) {
+    await req('POST', '/api/inbound', { productId: dp2.body.data.id, quantity: 5, date: '2026-07-27', remark: 'del-test' }, users.caojie.token);
+    const del2 = await req('POST', '/api/products/delete', { productId: dp2.body.data.id }, users.caojie.token);
+    if (!del2.body.success && del2.body.error.includes('库存')) {
+      const invS = await req('GET', '/api/inventory?ship=YY01', null, users.caojie.token);
+      const still = invS.body.data.some(r => r.id === dp2.body.data.id);
+      if (still) ok('删除类目-库存>0拒绝删除');
+      else ng('删除类目-拒绝后产品消失');
+    } else ng('删除类目-库存>0未被拒绝: ' + JSON.stringify(del2.body));
+  } else ng('创建有库存产品失败');
+
+  // 17e. 删除类目 - 恢复
+  if (dp1.body.success) {
+    const res1 = await req('POST', '/api/products/restore', { productId: dp1.body.data.id }, users.caojie.token);
+    if (res1.body.success) {
+      const invR = await req('GET', '/api/inventory?ship=YY01', null, users.caojie.token);
+      const back = invR.body.data.some(r => r.id === dp1.body.data.id);
+      if (back) ok('删除类目-恢复后重新出现');
+      else ng('删除类目-恢复后仍不可见');
+      // 清理
+      await req('POST', '/api/products/delete', { productId: dp1.body.data.id }, users.caojie.token);
+    } else ng('删除类目-恢复失败: ' + (res1.body.error || ''));
+  }
+  // 清理 dp2 (有库存不能删，用restore流程跳过)
+
+  // 17f. 选船卡片修复 - ships/stats 非空
+  const stats2 = await req('GET', '/api/ships/stats', null, users.caojie.token);
+  if (stats2.body.success && stats2.body.data.length > 0) ok('选船卡片-ships/stats返回非空');
+  else ng('选船卡片-ships/stats为空: ' + JSON.stringify(stats2.body));
 
   // 汇总
   console.log(`\n═══ 结果: ${pass} 通过 / ${fail} 失败 ═══`);

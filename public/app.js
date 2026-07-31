@@ -187,6 +187,7 @@ function debounceLoadInRecords(){_debounce('inr',loadInRecords);}
 function debounceLoadOutRecords(){_debounce('out',loadOutRecords);}
 
 async function loadInventory(){
+  if(window._editMode){renderEditTable();return;}
   const sid=document.getElementById('supplierFilter').value;
   const url=sid?apiUrl(`api/inventory/supplier/${sid}`):apiUrl('api/inventory');
   const res=await fetch(url,{headers:getHeaders()});
@@ -206,7 +207,7 @@ async function loadInventory(){
         <td>${r.unit}</td><td>${fmtInt(r.total_in)}</td><td>${fmtInt(r.total_out)}</td><td style="${st}">${fmtInt(s)}</td>
         <td><button class="btn btn-sm btn-outline" onclick="openNotes(${r.id},'${escOnclick(r.name)}')" title="备注">📝</button></td>
         <td><button class="btn btn-sm btn-outline" onclick="viewProduct(${r.id})">📄</button></td>
-        <td><button class="btn btn-sm btn-danger" onclick="openOut(${r.id},'${escOnclick(r.name)}')">出库</button></td></tr>`;
+        <td><button class="btn btn-sm btn-danger" onclick="openOut(${r.id},'${escOnclick(r.name)}')">出库</button>${s<=0?` <button class="btn btn-sm btn-outline" onclick="deleteProduct(${r.id},'${escOnclick(r.name)}')" title="仅库存为0时可删除" style="color:#e53935;border-color:#e53935">🗑</button>`:''}</td></tr>`;
     }).join('');
   } else {
     // 按供应商分组折叠显示
@@ -236,7 +237,7 @@ async function loadInventory(){
             <td>${fmtInt(r.total_in)}</td><td>${fmtInt(r.total_out)}</td><td style="${st}">${fmtInt(s)}</td>
             <td><button class="btn btn-sm btn-outline" onclick="event.stopPropagation();openNotes(${r.id},'${escOnclick(r.name)}')" title="备注">📝</button></td>
             <td><button class="btn btn-sm btn-outline" onclick="event.stopPropagation();viewProduct(${r.id})">📄</button></td>
-            <td><button class="btn btn-sm btn-danger" onclick="event.stopPropagation();openOut(${r.id},'${escOnclick(r.name)}')">出库</button></td></tr>`;
+            <td><button class="btn btn-sm btn-danger" onclick="event.stopPropagation();openOut(${r.id},'${escOnclick(r.name)}')">出库</button>${s<=0?` <button class="btn btn-sm btn-outline" onclick="event.stopPropagation();deleteProduct(${r.id},'${escOnclick(r.name)}')" title="仅库存为0时可删除" style="color:#e53935;border-color:#e53935">🗑</button>`:''}</td></tr>`;
         });
       }
     });
@@ -1596,4 +1597,125 @@ async function openIterationLog(){
         '</div>';
     }).join('');
   }catch(e){list.innerHTML='<div style="color:#e53935;padding:20px;">加载失败</div>';}
+}
+
+// ====== 删除产品类目（软删除）======
+async function deleteProduct(id,name){
+  if(!confirm('⚠️ 确认删除类目「'+name+'」？\n\n该产品将从库存总览中消失。\n仅库存为0时可删除，此操作可从变更日志回滚。'))return;
+  const j=await(await fetch(apiUrl('api/products/delete'),{method:'POST',headers:getHeaders(),body:JSON.stringify({productId:id})})).json();
+  if(j.success){showToast('✅ 已删除: '+name,2000);loadInventory();}
+  else alert('删除失败: '+j.error);
+}
+
+// ====== 编辑模式 ======
+window._editMode = false;
+window._editData = [];
+window._editValues = {};
+function trackEdit(id, field, val){
+  if(!window._editValues[id]) window._editValues[id] = {};
+  window._editValues[id][field] = val;
+}
+function escAttr(s){return String(s||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');}
+
+function editModal(html, buttons){
+  const old = document.getElementById('editModeModal'); if (old) old.remove();
+  const ov = document.createElement('div');
+  ov.id = 'editModeModal';
+  ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:9999;display:flex;align-items:center;justify-content:center';
+  ov.innerHTML = `<div style="background:#fff;border-radius:12px;padding:24px;max-width:520px;width:92%;max-height:80vh;overflow-y:auto">
+    <div style="font-size:14px;line-height:1.8;color:#333">${html}</div>
+    <div style="margin-top:18px;display:flex;gap:10px;justify-content:flex-end" id="editModeModalBtns"></div></div>`;
+  document.body.appendChild(ov);
+  const box = ov.querySelector('#editModeModalBtns');
+  buttons.forEach(b => {
+    const btn = document.createElement('button');
+    btn.className = 'btn btn-sm ' + (b.primary ? 'btn-primary' : 'btn-outline');
+    btn.textContent = b.label;
+    btn.onclick = () => { if (!b.keep) ov.remove(); b.onClick && b.onClick(); };
+    box.appendChild(btn);
+  });
+}
+
+function enterEditMode(){
+  editModal('即将进入现有产品信息编辑模式，库存产品名称和规格将可被自由修改。<br><span style="color:#888;font-size:13px">供应商、数量等其他信息不可编辑；修改品名/规格后如果与其他产品撞车，系统会提示合并。</span>', [
+    { label: '确认', primary: true, onClick: async () => {
+      const res = await fetch(apiUrl('api/inventory'), { headers: getHeaders() });
+      const json = await res.json();
+      if (!json.success) { alert('加载失败'); return; }
+      window._editData = json.data;
+      window._editValues = {};
+      window._editMode = true;
+      document.getElementById('editModeBtn').textContent = '✅ 确认编辑';
+      document.getElementById('editModeBtn').onclick = applyEditMode;
+      document.getElementById('editCancelBtn').style.display = '';
+      renderEditTable();
+    }},
+    { label: '取消', primary: false }
+  ]);
+}
+
+function renderEditTable(){
+  const tbody = document.getElementById('inventoryBody');
+  const keyword = (document.getElementById('searchInput').value || '').toLowerCase();
+  const data = keyword
+    ? window._editData.filter(r => (r.name||'').toLowerCase().includes(keyword) || (r.spec||'').toLowerCase().includes(keyword) || (r.supplier_name||'').toLowerCase().includes(keyword))
+    : window._editData;
+  document.getElementById('countBadge').textContent = data.length + ' 项（编辑模式）';
+  if (!data.length) { tbody.innerHTML = '<tr><td colspan="11" class="loading">📭 无匹配产品</td></tr>'; return; }
+  tbody.innerHTML = data.map(r => {
+    const s = r.stock;
+    const ev = window._editValues[r.id] || {};
+    const nameVal = ev.name !== undefined ? ev.name : r.name;
+    const specVal = ev.spec !== undefined ? ev.spec : (r.spec || '');
+    return `<tr style="background:#fffbe6">
+      <td>${r.supplier_name || '-'}</td>
+      <td><input class="edit-name" data-id="${r.id}" value="${escAttr(nameVal)}" title="${escAttr(nameVal)}" oninput="trackEdit(${r.id},'name',this.value)" style="width:100%;box-sizing:border-box;padding:4px 6px;border:1px solid #f0c36d;border-radius:4px"></td>
+      <td><input class="edit-spec" data-id="${r.id}" value="${escAttr(specVal)}" title="${escAttr(specVal)}" oninput="trackEdit(${r.id},'spec',this.value)" style="width:100%;box-sizing:border-box;padding:4px 6px;border:1px solid #f0c36d;border-radius:4px"></td>
+      <td>${r.unit}</td><td>${fmtInt(r.total_in)}</td><td>${fmtInt(r.total_out)}</td><td>${fmtInt(s)}</td>
+      <td colspan="4" style="color:#999;font-size:12px">编辑模式：仅品名/规格可改</td></tr>`;
+  }).join('');
+}
+
+async function applyEditMode(){
+  const changes = [];
+  window._editData.forEach(r => {
+    const ev = window._editValues[r.id];
+    if (!ev) return;
+    const nn = (ev.name !== undefined ? ev.name : r.name).trim();
+    const ns = (ev.spec !== undefined ? ev.spec : (r.spec || '')).trim();
+    if (nn !== r.name || ns !== (r.spec || '')) changes.push({ id: r.id, name: nn, spec: ns });
+  });
+  if (!changes.length) { showToast('没有修改内容', 2000); exitEditMode(false); return; }
+  const pv = await (await fetch(apiUrl('api/products/edit-preview'), { method: 'POST', headers: getHeaders(), body: JSON.stringify({ changes }) })).json();
+  if (!pv.success) { alert(pv.error || '预检失败'); return; }
+  const { applied, merges } = pv.data;
+  const chgList = applied.map(a => `「${a.oldName} ${a.oldSpec}」→「${a.newName} ${a.newSpec}」`).join('<br>');
+  const doApply = async (allowMerge) => {
+    const r = await (await fetch(apiUrl('api/products/edit-apply'), { method: 'POST', headers: getHeaders(), body: JSON.stringify({ changes, allowMerge }) })).json();
+    if (!r.success) { alert(r.error || '保存失败'); return; }
+    showToast(`✅ 已修改 ${r.data.changed} 项${r.data.merged ? '，合并 ' + r.data.merged + ' 项' : ''}`, 3000);
+    exitEditMode(false);
+    loadInventory();
+  };
+  if (merges.length) {
+    const mgList = merges.map(m => `「${m.fromName}(${m.fromSpec || '无规格'})」将并入「${m.toName}(${m.toSpec || '无规格'})」，入出库记录与库存一并转移`).join('<br>');
+    editModal(`<b>检测到 ${merges.length} 项产品将被合并：</b><br>${mgList}<br><br><b>变更明细：</b><br>${chgList}`, [
+      { label: '确认合并', primary: true, onClick: () => doApply(true) },
+      { label: '取消', primary: false, keep: false }
+    ]);
+  } else {
+    editModal(`<b>确认以下变更？</b><br>${chgList}`, [
+      { label: '确认', primary: true, onClick: () => doApply(false) }
+    ]);
+  }
+}
+
+function exitEditMode(reload){
+  window._editMode = false;
+  window._editData = [];
+  window._editValues = {};
+  document.getElementById('editModeBtn').textContent = '✏️ 编辑模式';
+  document.getElementById('editModeBtn').onclick = enterEditMode;
+  document.getElementById('editCancelBtn').style.display = 'none';
+  loadInventory();
 }

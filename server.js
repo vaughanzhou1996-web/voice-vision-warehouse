@@ -21,6 +21,8 @@ try {
 } catch (e) {}
 if (process.env.DATABASE_URL) DATABASE_URL = process.env.DATABASE_URL;
 const pool = new Pool({ connectionString: DATABASE_URL });
+// 幂等迁移：确保 deleted_at 列存在
+pool.query('ALTER TABLE products ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMP').catch(()=>{});
 const upload = multer({ dest: UPLOAD_DIR, limits: { fileSize: 10*1024*1024 } });
 
 // 百炼 Qwen 模型（lib/qwen.js）
@@ -194,7 +196,7 @@ app.get('/api/inventory', auth, async (req, res) => {
       LEFT JOIN suppliers s ON p.supplier_id=s.id
       LEFT JOIN (SELECT product_id,SUM(quantity) t FROM inbound_records GROUP BY product_id) inb ON p.id=inb.product_id
       LEFT JOIN (SELECT product_id,SUM(quantity) t FROM outbound_records GROUP BY product_id) outb ON p.id=outb.product_id
-      WHERE p.project_no=$1
+      WHERE p.project_no=$1 AND p.deleted_at IS NULL
       ORDER BY p.id
     `, [getShip(req)]);
     res.json({ success: true, data: r.rows });
@@ -204,7 +206,7 @@ app.get('/api/inventory', auth, async (req, res) => {
 // 产品列表
 app.get('/api/products', auth, async (req, res) => {
   try {
-    const r = await pool.query(`SELECT p.*,COALESCE(s.name,'') AS supplier_name FROM products p LEFT JOIN suppliers s ON p.supplier_id=s.id WHERE p.project_no=$1 ORDER BY p.name`, [getShip(req)]);
+    const r = await pool.query(`SELECT p.*,COALESCE(s.name,'') AS supplier_name FROM products p LEFT JOIN suppliers s ON p.supplier_id=s.id WHERE p.project_no=$1 AND p.deleted_at IS NULL ORDER BY p.name`, [getShip(req)]);
     res.json({ success: true, data: r.rows });
   } catch (e) { res.json({ success: false, error: e.message }); }
 });
@@ -509,57 +511,78 @@ app.post('/api/products', auth, async (req, res) => {
   } catch (e) { res.json({ success: false, error: e.message }); }
 });
 
-// ====== 编辑预览（检测合并冲突）======
+// ====== 编辑模式（planEdits 工具函数）======
+function planEdits(allProducts, changes) {
+  const byId = {}; allProducts.forEach(p => byId[p.id] = { ...p });
+  const originals = {};
+  const applied = [];
+  for (const c of changes) {
+    const p = byId[c.id]; if (!p) continue;
+    const nn = String(c.name || '').trim(), ns = String(c.spec || '').trim();
+    if (!nn) return { error: '品名不能为空' };
+    if (nn === p.name && ns === (p.spec || '')) continue;
+    applied.push({ id: p.id, oldName: p.name, oldSpec: p.spec || '', newName: nn, newSpec: ns });
+    originals[p.id] = { name: p.name, spec: p.spec || '' };
+    p.name = nn; p.spec = ns;
+  }
+  const key = p => `${p.name}|${p.spec || ''}|${p.unit || ''}`;
+  const groups = {};
+  Object.values(byId).forEach(p => { (groups[key(p)] = groups[key(p)] || []).push(p); });
+  const merges = [];
+  for (const list of Object.values(groups)) {
+    if (list.length < 2) continue;
+    list.sort((a, b) => a.id - b.id);
+    const target = list[0];
+    for (let i = 1; i < list.length; i++) {
+      const o = originals[list[i].id];
+      merges.push({ fromId: list[i].id, fromName: o ? o.name : list[i].name, fromSpec: o ? o.spec : (list[i].spec || ''), toId: target.id, toName: target.name, toSpec: target.spec || '' });
+    }
+  }
+  return { applied, merges };
+}
+
 app.post('/api/products/edit-preview', auth, async (req, res) => {
   try {
-    const { edits } = req.body; // [{id, name, spec, unit}]
-    if (!edits || !edits.length) return res.json({ success: true, merges: [] });
-    const ship = getShip(req);
-    const allProducts = (await pool.query('SELECT id,name,spec,unit FROM products WHERE project_no=$1', [ship])).rows;
-    const norm = s => (s||'').trim().toLowerCase().replace(/\s+/g,'');
-    const merges = [];
-    for (const edit of edits) {
-      const nName = norm(edit.name), nSpec = norm(edit.spec);
-      const conflict = allProducts.find(p => p.id !== edit.id && norm(p.name) === nName && norm(p.spec) === nSpec);
-      if (conflict) {
-        const orig = allProducts.find(p => p.id === edit.id);
-        merges.push({ editId: edit.id, mergeIntoId: conflict.id, editName: edit.name, editSpec: edit.spec, targetName: conflict.name, targetSpec: conflict.spec, originalSpec: orig ? orig.spec : '' });
-      }
-    }
-    res.json({ success: true, merges });
+    const all = (await pool.query('SELECT * FROM products WHERE project_no=$1 AND deleted_at IS NULL', [getShip(req)])).rows;
+    const plan = planEdits(all, req.body.changes || []);
+    if (plan.error) return res.json({ success: false, error: plan.error });
+    res.json({ success: true, data: plan });
   } catch (e) { res.json({ success: false, error: e.message }); }
 });
 
-// ====== 编辑应用（含合并处理）======
 app.post('/api/products/edit-apply', auth, async (req, res) => {
   const client = await pool.connect();
   try {
-    const { edits, mergeDecisions } = req.body; // edits:[{id,name,spec,unit}], mergeDecisions:[{editId, mergeIntoId, confirmed:true}]
-    if (!edits || !edits.length) return res.json({ success: true });
+    const { changes = [], allowMerge = false } = req.body;
+    const all = (await client.query('SELECT * FROM products WHERE project_no=$1 AND deleted_at IS NULL', [getShip(req)])).rows;
+    const plan = planEdits(all, changes);
+    if (plan.error) return res.json({ success: false, error: plan.error });
+    if (plan.merges.length && !allowMerge) return res.status(409).json({ success: false, merges: plan.merges });
     await client.query('BEGIN');
-    const mergeMap = {};
-    if (mergeDecisions) mergeDecisions.forEach(m => { if (m.confirmed) mergeMap[m.editId] = m.mergeIntoId; });
-    for (const edit of edits) {
-      const targetId = mergeMap[edit.id];
-      if (targetId) {
-        // 合并：将 edit.id 的入库/出库记录转移到 targetId
-        await client.query('UPDATE inbound_records SET product_id=$1 WHERE product_id=$2', [targetId, edit.id]);
-        await client.query('UPDATE outbound_records SET product_id=$1 WHERE product_id=$2', [targetId, edit.id]);
-        await client.query('UPDATE change_log SET product_id=$1 WHERE product_id=$2', [targetId, edit.id]);
-        await client.query('DELETE FROM products WHERE id=$1', [edit.id]);
-      } else {
-        // 普通编辑
-        const orig = (await client.query('SELECT spec FROM products WHERE id=$1', [edit.id])).rows[0];
-        await client.query('UPDATE products SET name=$1,spec=$2,unit=$3 WHERE id=$4', [edit.name, edit.spec||'', edit.unit||'个', edit.id]);
-        if (orig && orig.spec !== (edit.spec||'')) {
-          await logChange('edit', edit.id, edit.name, edit.spec, 0, 0, 0, req.user.displayName, `规格变更: ${orig.spec} → ${edit.spec}`, 'products', edit.id);
-        }
-      }
+    for (const a of plan.applied) {
+      await client.query('UPDATE products SET name=$1, spec=$2 WHERE id=$3', [a.newName, a.newSpec, a.id]);
+      await client.query(
+        `INSERT INTO change_log (action_type, product_id, product_name, quantity, quantity_before, quantity_after, operator, details)
+         VALUES ('edit', $1, $2, 0, 0, 0, $3, $4)`,
+        [a.id, a.newName, req.user.displayName, `编辑模式修改: 品名'${a.oldName}'→'${a.newName}' 规格'${a.oldSpec}'→'${a.newSpec}'`]);
+    }
+    for (const m of plan.merges) {
+      await client.query('UPDATE inbound_records SET product_id=$1 WHERE product_id=$2', [m.toId, m.fromId]);
+      await client.query('UPDATE outbound_records SET product_id=$1 WHERE product_id=$2', [m.toId, m.fromId]);
+      await client.query('UPDATE change_log SET product_id=$1 WHERE product_id=$2', [m.toId, m.fromId]);
+      await client.query('UPDATE product_notes SET product_id=$1 WHERE product_id=$2', [m.toId, m.fromId]).catch(() => {});
+      await client.query('DELETE FROM products WHERE id=$1', [m.fromId]);
+      await client.query(
+        `INSERT INTO change_log (action_type, product_id, product_name, quantity, quantity_before, quantity_after, operator, details)
+         VALUES ('edit', $1, $2, 0, 0, 0, $3, $4)`,
+        [m.toId, m.toName, req.user.displayName, `编辑模式合并: '${m.fromName}(${m.fromSpec})' 并入 '${m.toName}(${m.toSpec})'，入出库记录已转移`]);
     }
     await client.query('COMMIT');
-    res.json({ success: true });
-  } catch (e) { await client.query('ROLLBACK').catch(()=>{}); res.json({ success: false, error: e.message }); }
-  finally { client.release(); }
+    res.json({ success: true, data: { changed: plan.applied.length, merged: plan.merges.length } });
+  } catch (e) {
+    await client.query('ROLLBACK');
+    res.json({ success: false, error: e.message });
+  } finally { client.release(); }
 });
 
 app.get('/api/inventory/supplier/:sid', auth, async (req, res) => {
@@ -570,7 +593,7 @@ app.get('/api/inventory/supplier/:sid', auth, async (req, res) => {
       FROM products p LEFT JOIN suppliers s ON p.supplier_id=s.id
       LEFT JOIN (SELECT product_id,SUM(quantity) t FROM inbound_records GROUP BY product_id) inb ON p.id=inb.product_id
       LEFT JOIN (SELECT product_id,SUM(quantity) t FROM outbound_records GROUP BY product_id) outb ON p.id=outb.product_id
-      WHERE p.supplier_id=$1 AND p.project_no=$2 ORDER BY p.id`,[req.params.sid, getShip(req)]);
+      WHERE p.supplier_id=$1 AND p.project_no=$2 AND p.deleted_at IS NULL ORDER BY p.id`,[req.params.sid, getShip(req)]);
     res.json({ success: true, data: r.rows });
   } catch (e) { res.json({ success: false, error: e.message }); }
 });
@@ -638,7 +661,7 @@ app.get('/api/dashboard', auth, async (req, res) => {
       LEFT JOIN suppliers s ON p.supplier_id=s.id
       LEFT JOIN (SELECT product_id,SUM(quantity) t FROM inbound_records GROUP BY product_id) inb ON p.id=inb.product_id
       LEFT JOIN (SELECT product_id,SUM(quantity) t FROM outbound_records GROUP BY product_id) outb ON p.id=outb.product_id
-      WHERE p.project_no=$1
+      WHERE p.project_no=$1 AND p.deleted_at IS NULL
       GROUP BY COALESCE(s.name,'未分类')
       ORDER BY stock DESC, total_in DESC`, [getShip(req)]);
     res.json({ success: true, data: r.rows });
@@ -667,9 +690,9 @@ app.get('/api/dashboard/report', auth, async (req, res) => {
     const cached = getCachedReport(role, ship);
     if (cached) { res.json({ success: true, data: { report: cached, role, cached: true } }); return; }
     // 收集真实数据
-    const stock = await pool.query(`SELECT COUNT(*) AS total, SUM(CASE WHEN COALESCE(inb.t,0)-COALESCE(outb.t,0)<3 THEN 1 ELSE 0 END) AS low FROM products p LEFT JOIN (SELECT product_id,SUM(quantity) t FROM inbound_records GROUP BY product_id) inb ON p.id=inb.product_id LEFT JOIN (SELECT product_id,SUM(quantity) t FROM outbound_records GROUP BY product_id) outb ON p.id=outb.product_id WHERE p.project_no=$1`, [ship]);
-    const today = await pool.query(`SELECT COUNT(*) AS c FROM inbound_records WHERE date=CURRENT_DATE AND product_id IN (SELECT id FROM products WHERE project_no=$1)`, [ship]);
-    const todayOut = await pool.query(`SELECT COUNT(*) AS c FROM outbound_records WHERE date=CURRENT_DATE AND product_id IN (SELECT id FROM products WHERE project_no=$1)`, [ship]);
+    const stock = await pool.query(`SELECT COUNT(*) AS total, SUM(CASE WHEN COALESCE(inb.t,0)-COALESCE(outb.t,0)<3 THEN 1 ELSE 0 END) AS low FROM products p LEFT JOIN (SELECT product_id,SUM(quantity) t FROM inbound_records GROUP BY product_id) inb ON p.id=inb.product_id LEFT JOIN (SELECT product_id,SUM(quantity) t FROM outbound_records GROUP BY product_id) outb ON p.id=outb.product_id WHERE p.project_no=$1 AND p.deleted_at IS NULL`, [ship]);
+    const today = await pool.query(`SELECT COUNT(*) AS c FROM inbound_records WHERE date=CURRENT_DATE AND product_id IN (SELECT id FROM products WHERE project_no=$1 AND deleted_at IS NULL)`, [ship]);
+    const todayOut = await pool.query(`SELECT COUNT(*) AS c FROM outbound_records WHERE date=CURRENT_DATE AND product_id IN (SELECT id FROM products WHERE project_no=$1 AND deleted_at IS NULL)`, [ship]);
     // 预测数据
     let forecastSummary = '';
     try {
@@ -762,6 +785,7 @@ app.get('/api/ships/stats', auth, async (req, res) => {
       FROM products p
       LEFT JOIN (SELECT product_id,SUM(quantity) t FROM inbound_records GROUP BY product_id) inb ON p.id=inb.product_id
       LEFT JOIN (SELECT product_id,SUM(quantity) t FROM outbound_records GROUP BY product_id) outb ON p.id=outb.product_id
+      WHERE p.deleted_at IS NULL
       GROUP BY p.project_no`);
     const statsMap = {};
     r.rows.forEach(row => statsMap[row.project_no] = row);
@@ -797,6 +821,51 @@ app.post('/api/rollback', auth, async (req, res) => {
       '回滚: 撤销'+(last.action_type==='inbound'?'入库':'出库')+' '+last.product_name+' ×'+last.quantity, null, null);
     res.json({ success: true, data: { rolledBack: true, action: last.action_type, product: last.product_name } });
   } catch (e) { res.json({ success: false, error: e.message }); }
+});
+
+// ====== 删除产品类目（软删除，可回滚）======
+app.post('/api/products/delete', auth, async (req, res) => {
+  const client = await pool.connect();
+  try {
+    const { productId } = req.body;
+    if (!productId) return res.json({ success: false, error: '缺少产品ID' });
+    const prod = (await client.query('SELECT name,spec,unit,project_no FROM products WHERE id=$1', [productId])).rows[0];
+    if (!prod) return res.json({ success: false, error: '产品不存在' });
+    if (prod.project_no !== getShip(req)) return res.status(403).json({ success: false, error: '无权操作该船舶数据' });
+    const stockBefore = await getStock(productId);
+    if (stockBefore > 0) return res.json({ success: false, error: '该产品库存为' + stockBefore + '，仅允许删除库存为0的产品' });
+    await client.query('BEGIN');
+    await client.query('UPDATE products SET deleted_at=NOW() WHERE id=$1', [productId]);
+    await logChange('delete', productId, prod.name, prod.spec, 0, stockBefore, 0, req.user.displayName,
+      '删除类目: ' + prod.name + (prod.spec ? ' (' + prod.spec + ')' : '') + ' 原库存:' + stockBefore, 'products', productId);
+    await client.query('COMMIT');
+    res.json({ success: true, data: { deleted: true, product: prod.name } });
+  } catch (e) {
+    await client.query('ROLLBACK').catch(()=>{});
+    res.json({ success: false, error: e.message });
+  } finally { client.release(); }
+});
+
+// ====== 恢复删除类目 ======
+app.post('/api/products/restore', auth, async (req, res) => {
+  const client = await pool.connect();
+  try {
+    const { productId } = req.body;
+    if (!productId) return res.json({ success: false, error: '缺少产品ID' });
+    const prod = (await client.query('SELECT name,spec,unit,project_no FROM products WHERE id=$1', [productId])).rows[0];
+    if (!prod) return res.json({ success: false, error: '产品不存在' });
+    if (prod.project_no !== getShip(req)) return res.status(403).json({ success: false, error: '无权操作该船舶数据' });
+    const stockAfter = await getStock(productId);
+    await client.query('BEGIN');
+    await client.query('UPDATE products SET deleted_at=NULL WHERE id=$1', [productId]);
+    await logChange('restore', productId, prod.name, prod.spec, 0, 0, stockAfter, req.user.displayName,
+      '恢复类目: ' + prod.name, 'products', productId);
+    await client.query('COMMIT');
+    res.json({ success: true, data: { restored: true, product: prod.name } });
+  } catch (e) {
+    await client.query('ROLLBACK').catch(()=>{});
+    res.json({ success: false, error: e.message });
+  } finally { client.release(); }
 });
 
 // 语音识别（百炼 qwen3-asr-flash）

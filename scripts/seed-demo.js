@@ -80,7 +80,8 @@ CREATE TABLE IF NOT EXISTS products (
   spec VARCHAR(300) DEFAULT '',
   unit VARCHAR(50) DEFAULT '个',
   supplier_id INTEGER REFERENCES suppliers(id),
-  project_no VARCHAR(50) DEFAULT 'YY01'
+  project_no VARCHAR(50) DEFAULT 'YY01',
+  deleted_at TIMESTAMP
 );
 
 CREATE TABLE IF NOT EXISTS inbound_records (

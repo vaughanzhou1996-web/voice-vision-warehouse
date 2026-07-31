@@ -70,7 +70,9 @@
       <span class="count-badge" id="countBadge">0 项</span>
       <div class="zoom-controls"><button class="zoom-btn" onclick="zoomTable(-1)" title="缩小">−</button><span class="zoom-level" id="zoomLevel">100%</span><button class="zoom-btn" onclick="zoomTable(1)" title="放大">+</button></div>
       <button class="btn btn-sm" id="expandAllBtn" onclick="expandAll()" style="display:none">📂 全部展开</button>
-      <button class="btn btn-sm" id="rollbackBtn" onclick="doRollback()">⏪ 回滚</button>
+      <button class="btn btn-sm" id="editModeBtn" onclick="enterEditMode()">✏️ 编辑模式</button>
+      <button class="btn btn-sm" id="editCancelBtn" onclick="exitEditMode(true)" style="display:none">✖ 取消</button>
+      <button class="btn btn-sm" id="rollbackBtn" onclick="doRollback()">⏪  回滚</button>
       <button class="btn btn-sm" onclick="showSupplierManager()">🏢 供应商</button>
       <button class="btn btn-sm" id="batchOutBtn" onclick="toggleBatchOutbound()">📤 批量出库</button>
       <button class="btn btn-sm" onclick="showManualInbound()">📥 手工入库</button>
@@ -408,7 +410,7 @@
 </div>
 
 <script src="lib/echarts.min.js"></script>
-<script src="app.js?v=4"></script>
+<script src="app.js?v=5"></script>
 <script>window.onerror=function(m,u,l){var e=document.createElement('div');e.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#e53935;color:#fff;padding:12px;font-size:13px;z-index:9999';e.textContent='JS错误: '+m+' (行'+l+')';document.body.appendChild(e)};</script>
 <div id="toast" style="position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:#333;color:#fff;padding:10px 24px;border-radius:8px;font-size:14px;z-index:9999;display:none;box-shadow:0 4px 12px rgba(0,0,0,0.3);transition:opacity 0.3s;"></div>
 <!-- 迭代记录弹窗 -->
